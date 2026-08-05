@@ -510,17 +510,6 @@ export default function Home() {
 
         {message && <div className="data-message">{message}</div>}
 
-        {canManage && <section className="management-panel">
-          <div><span className="kicker">ADMINISTRACIÓN</span><h2>Gestionar cumplimiento</h2><p>Configura el catálogo, requisitos por marca y certificaciones de técnicos.</p></div>
-          <div className="management-actions">
-            <details><summary>Nueva certificación</summary><form onSubmit={handleAddCatalogCertification} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><input name="name" placeholder="Nombre de certificación" required /><input name="code" placeholder="Código (opcional)" /><button>Guardar</button></form></details>
-            <details><summary>Nuevo requisito</summary><form onSubmit={handleAddRequirement} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><select name="certification_id" required><option value="">Certificación</option>{certifications.filter((certification) => certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select><input name="required_count" type="number" min="1" defaultValue="1" required /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar</button></form></details>
-            <details><summary>Asignar a técnico</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><select name="technician_id" required><option value="">Técnico</option>{technicians.map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><select name="certification_id" required><option value="">Certificación</option>{certifications.filter((certification) => certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select><input name="issued_at" type="date" title="Fecha de emisión" /><input name="expires_at" type="date" title="Fecha de vencimiento" /><input name="certificate_number" placeholder="N.º de certificado" /><input name="verification_url" type="url" placeholder="Enlace de evidencia" /><select name="status" defaultValue="active"><option value="active">Vigente</option><option value="expiring">Por vencer</option><option value="pending_validation">Pendiente de validar</option></select><button>Guardar</button></form></details>
-            <details><summary>Nueva marca</summary><form onSubmit={handleAddBrand} className="inline-form"><input name="name" placeholder="Nombre de la marca" required /><input name="internal_owner" placeholder="Responsable interno" /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar</button></form></details>
-            <details><summary>Nuevo técnico</summary><form onSubmit={handleAddTechnician} className="inline-form"><input name="full_name" placeholder="Nombre completo" required /><input name="email" type="email" placeholder="Correo (opcional)" /><input name="job_title" placeholder="Cargo (opcional)" /><input name="area" placeholder="Área (opcional)" /><input name="start_date" type="date" title="Fecha de ingreso" /><input name="manager_name" placeholder="Responsable (opcional)" /><button>Guardar</button></form></details>
-          </div>
-        </section>}
-
         {activeSection === "summary" && <>
         <section className="hero-card">
           <div><span className="hero-label">CUMPLIMIENTO GENERAL</span><strong>{generalCompliance}%</strong><p>{totalCovered} de {totalRequired} cupos requeridos están cubiertos.</p></div>
@@ -563,6 +552,11 @@ export default function Home() {
           </aside>
         </section>}
 
+        {activeSection === "brands" && canManage && <section className="management-panel contextual-management">
+          <div><span className="kicker">ADMINISTRACIÓN DE MARCAS</span><h2>Agregar una marca</h2><p>Registra las marcas con su responsable interno y notas de contexto.</p></div>
+          <div className="management-actions"><details open><summary>Nueva marca</summary><form onSubmit={handleAddBrand} className="inline-form"><input name="name" placeholder="Nombre de la marca" required /><input name="internal_owner" placeholder="Responsable interno" /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar marca</button></form></details></div>
+        </section>}
+
         {activeSection === "brands" && <section className="panel data-panel">
           <div className="panel-heading"><div><span className="kicker">CATÁLOGO</span><h2>Marcas</h2></div><span className="result-count">{visibleBrandSummaries.length} resultados</span></div>
           <div className="table-list">
@@ -573,6 +567,11 @@ export default function Home() {
           </div>
         </section>}
 
+        {activeSection === "technicians" && canManage && <section className="management-panel contextual-management">
+          <div><span className="kicker">ADMINISTRACIÓN DE TÉCNICOS</span><h2>Agregar un técnico</h2><p>Registra al personal con sus datos de contacto, cargo, área y responsable.</p></div>
+          <div className="management-actions"><details open><summary>Nuevo técnico</summary><form onSubmit={handleAddTechnician} className="inline-form"><input name="full_name" placeholder="Nombre completo" required /><input name="email" type="email" placeholder="Correo (opcional)" /><input name="job_title" placeholder="Cargo (opcional)" /><input name="area" placeholder="Área (opcional)" /><input name="start_date" type="date" title="Fecha de ingreso" /><input name="manager_name" placeholder="Responsable (opcional)" /><button>Guardar técnico</button></form></details></div>
+        </section>}
+
         {activeSection === "technicians" && <section className="panel data-panel">
           <div className="panel-heading"><div><span className="kicker">EQUIPO</span><h2>Técnicos</h2></div><span className="result-count">{visibleTechnicians.length} resultados</span></div>
           <div className="table-list">
@@ -580,6 +579,14 @@ export default function Home() {
               <div className="brand-logo">{technician.full_name.slice(0, 2).toUpperCase()}</div><div><strong>{technician.full_name}</strong><span>{technician.email ?? technician.job_title ?? "Sin datos de contacto"}</span></div><span className={`status ${technician.status === "active" ? "cumplido" : "pendiente"}`}>{technician.status}</span><span>{technician.area ?? "Sin área"}</span>{canManage ? <div className="row-actions"><button onClick={() => editTechnician(technician)}>Editar</button><button onClick={() => removeTechnician(technician)}>Eliminar</button></div> : <button className="text-button" onClick={() => showSection("certifications", { query: technician.full_name })}>Ver certificados</button>}
             </article>)}
             {visibleTechnicians.length === 0 && <p className="empty-state">No hay técnicos que coincidan con la búsqueda.</p>}
+          </div>
+        </section>}
+
+        {activeSection === "certifications" && canManage && <section className="management-panel contextual-management">
+          <div><span className="kicker">ADMINISTRACIÓN DE CERTIFICACIONES</span><h2>Catálogo y asignaciones</h2><p>Crea certificaciones por marca y asígnalas al técnico que ya las posee.</p></div>
+          <div className="management-actions">
+            <details open><summary>Nueva certificación</summary><form onSubmit={handleAddCatalogCertification} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><input name="name" placeholder="Nombre de certificación" required /><input name="code" placeholder="Código (opcional)" /><button>Guardar certificación</button></form></details>
+            <details><summary>Asignar a técnico</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><select name="technician_id" required><option value="">Técnico</option>{technicians.filter((technician) => technician.status === "active").map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><select name="certification_id" required><option value="">Certificación</option>{certifications.filter((certification) => certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select><input name="issued_at" type="date" title="Fecha de emisión" /><input name="expires_at" type="date" title="Fecha de vencimiento" /><input name="certificate_number" placeholder="N.º de certificado" /><input name="verification_url" type="url" placeholder="Enlace de evidencia" /><select name="status" defaultValue="active"><option value="active">Vigente</option><option value="expiring">Por vencer</option><option value="pending_validation">Pendiente de validar</option></select><button>Guardar asignación</button></form></details>
           </div>
         </section>}
 
@@ -599,6 +606,11 @@ export default function Home() {
             </article>)}
             {visibleRecords.length === 0 && <p className="empty-state">No hay certificaciones que coincidan con los filtros actuales.</p>}
           </div>
+        </section>}
+
+        {activeSection === "requirements" && canManage && <section className="management-panel contextual-management">
+          <div><span className="kicker">ADMINISTRACIÓN DE REQUISITOS</span><h2>Agregar un requisito</h2><p>Define cuántos técnicos certificados requiere cada marca para cumplir.</p></div>
+          <div className="management-actions"><details open><summary>Nuevo requisito</summary><form onSubmit={handleAddRequirement} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><select name="certification_id" required><option value="">Certificación</option>{certifications.filter((certification) => certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select><input name="required_count" type="number" min="1" defaultValue="1" required /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar requisito</button></form></details></div>
         </section>}
 
         {activeSection === "requirements" && <section className="panel data-panel">
