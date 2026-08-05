@@ -350,9 +350,16 @@ export default function Home() {
   async function handleAddRequirement(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const brandId = String(form.get("brand_id"));
+    const certificationId = String(form.get("certification_id"));
+    const certification = certifications.find((item) => item.id === certificationId);
+    if (!certification || certification.brand_id !== brandId) {
+      setMessage("La certificación debe pertenecer a la marca seleccionada.");
+      return;
+    }
     const result = await getSupabaseClient().from("brand_requirements").insert({
-      brand_id: String(form.get("brand_id")),
-      certification_id: String(form.get("certification_id")),
+      brand_id: brandId,
+      certification_id: certificationId,
       required_count: Number(form.get("required_count")),
       notes: String(form.get("notes") ?? "").trim() || null,
     });
@@ -616,16 +623,11 @@ export default function Home() {
           <div className="management-actions"><details><summary>Nueva marca</summary><form onSubmit={handleAddBrand} className="inline-form"><input name="name" placeholder="Nombre de la marca" required /><input name="internal_owner" placeholder="Responsable interno" /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar marca</button></form></details></div>
         </section>}
 
-        {activeSection === "brands" && selectedBrand && selectedBrandSummary && <section className="detail-panel">
-          <div className="detail-heading"><div><span className="kicker">MARCA SELECCIONADA</span><h2>{selectedBrand.name}</h2></div><button className="text-button" onClick={() => setSelectedBrandId(null)}>Cerrar ficha</button></div>
-          <div className="detail-grid"><div><span>Estado</span><strong>{selectedBrand.status}</strong></div><div><span>Responsable</span><strong>{selectedBrand.internal_owner ?? "Sin asignar"}</strong></div><div><span>Cobertura</span><strong>{selectedBrandSummary.covered} de {selectedBrandSummary.required} cupos</strong></div><div><span>Cumplimiento</span><strong>{selectedBrandSummary.compliance}%</strong></div><div><span>Certificaciones</span><strong>{certifications.filter((certification) => certification.brand_id === selectedBrand.id).length}</strong></div><div><span>Notas</span><strong>{selectedBrand.notes ?? "Sin notas"}</strong></div></div>
-        </section>}
-
         {activeSection === "brands" && <section className="panel data-panel">
           <div className="panel-heading"><div><span className="kicker">CATÁLOGO</span><h2>Marcas</h2></div><span className="result-count">{visibleBrandSummaries.length} resultados</span></div>
           <div className="table-list">
             {visibleBrandSummaries.map((brand) => <article className={`table-row draggable-row ${selectedBrandId === brand.id ? "selected-row" : ""}`} key={brand.id} draggable={canManage} onClick={() => setSelectedBrandId(brand.id)} onDragStart={(event) => handleBrandDragStart(event, brand.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => handleBrandDrop(event, brand.id)} onDragEnd={() => setDraggedBrandId(null)}>
-              <div className="brand-logo">{canManage ? <GripVertical size={18} /> : brand.name.slice(0, 2).toUpperCase()}</div><div><strong>{brand.name}</strong><span>{brand.internal_owner ?? "Sin responsable"}</span></div><span className={`status ${brand.status.toLowerCase().replace(" ", "-")}`}>{brand.status}</span><span>{brand.covered} de {brand.required} cupos</span>{canManage ? <div className="row-actions reorder-actions"><button aria-label={`Subir ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === 0} onClick={() => moveBrand(brand.id, -1)}><ArrowUp size={15}/></button><button aria-label={`Bajar ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === brands.length - 1} onClick={() => moveBrand(brand.id, 1)}><ArrowDown size={15}/></button><button onClick={() => editBrand(brands.find((item) => item.id === brand.id)!)}>Editar</button><button onClick={() => removeBrand(brands.find((item) => item.id === brand.id)!)}>Eliminar</button></div> : <button className="text-button" onClick={() => showSection("requirements", { query: brand.name })}>Ver requisitos</button>}
+              <div className="brand-logo">{canManage ? <GripVertical size={18} /> : brand.name.slice(0, 2).toUpperCase()}</div><div><strong>{brand.name}</strong><span>{brand.internal_owner ?? "Sin responsable"}</span></div><span className={`status ${brand.status.toLowerCase().replace(" ", "-")}`}>{brand.status}</span><span>{brand.covered} de {brand.required} cupos</span>{canManage ? <div className="row-actions reorder-actions"><button aria-label={`Subir ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === 0} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, -1); }}><ArrowUp size={15}/></button><button aria-label={`Bajar ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === brands.length - 1} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, 1); }}><ArrowDown size={15}/></button><button onClick={(event) => { event.stopPropagation(); editBrand(brands.find((item) => item.id === brand.id)!); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); removeBrand(brands.find((item) => item.id === brand.id)!); }}>Eliminar</button></div> : <button className="text-button" onClick={(event) => { event.stopPropagation(); showSection("requirements", { query: brand.name }); }}>Ver requisitos</button>}
             </article>)}
             {visibleBrandSummaries.length === 0 && <p className="empty-state">No hay marcas que coincidan con la búsqueda.</p>}
           </div>
@@ -702,6 +704,19 @@ export default function Home() {
           </div>
         </section>}
       </section>
+
+      {activeSection === "brands" && selectedBrand && selectedBrandSummary && <div className="modal-backdrop" role="presentation" onMouseDown={() => setSelectedBrandId(null)}>
+        <section className="entity-modal" role="dialog" aria-modal="true" aria-labelledby="brand-modal-title" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="modal-heading"><div><span className="kicker">MARCA</span><h2 id="brand-modal-title">{selectedBrand.name}</h2><p>{selectedBrand.internal_owner ?? "Sin responsable asignado"}</p></div><button className="modal-close" onClick={() => setSelectedBrandId(null)}>Cerrar</button></div>
+          <div className="detail-grid modal-summary"><div><span>Estado</span><strong>{selectedBrand.status}</strong></div><div><span>Cobertura</span><strong>{selectedBrandSummary.covered} de {selectedBrandSummary.required} cupos</strong></div><div><span>Cumplimiento</span><strong>{selectedBrandSummary.compliance}%</strong></div><div><span>Certificaciones</span><strong>{certifications.filter((certification) => certification.brand_id === selectedBrand.id).length}</strong></div><div><span>Requisitos</span><strong>{requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).length}</strong></div><div><span>Notas</span><strong>{selectedBrand.notes ?? "Sin notas"}</strong></div></div>
+
+          <div className="modal-section"><div><span className="kicker">REQUISITOS DE {selectedBrand.name.toUpperCase()}</span><h3>Requisitos de certificación</h3></div>
+            {requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).length > 0 ? <div className="brand-requirements">{requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).map((requirement) => <div key={requirement.id}><strong>{certificationById.get(requirement.certification_id)?.name ?? "Certificación sin identificar"}</strong><span>{requirement.required_count} cupos requeridos</span></div>)}</div> : <p className="modal-empty">Aún no hay requisitos registrados para esta marca.</p>}
+          </div>
+
+          {canManage && <div className="modal-section modal-form-section"><details><summary>Agregar requisito a {selectedBrand.name}</summary><form onSubmit={handleAddRequirement} className="inline-form"><input type="hidden" name="brand_id" value={selectedBrand.id} /><select name="certification_id" required><option value="">Certificación de {selectedBrand.name}</option>{certifications.filter((certification) => certification.brand_id === selectedBrand.id && certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{certification.name}{certification.code ? ` · ${certification.code}` : ""}</option>)}</select><input name="required_count" type="number" min="1" defaultValue="1" required /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar requisito</button></form></details></div>}
+        </section>
+      </div>}
     </main>
   );
 }

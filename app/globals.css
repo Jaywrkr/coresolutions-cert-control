@@ -186,6 +186,24 @@ button.table-row { cursor: pointer; }
 .detail-grid > div { min-height: 62px; padding-left: 12px; border-left: 2px solid #dfe3eb; }
 .detail-grid span { display: block; color: var(--muted); font-size: 11px; }
 .detail-grid strong { display: block; margin-top: 5px; color: var(--ink); font-size: 13px; line-height: 1.35; }
+.modal-backdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 28px; background: rgba(10, 19, 69, .48); backdrop-filter: blur(3px); }
+.entity-modal { width: min(860px, 100%); max-height: min(780px, calc(100vh - 56px)); overflow-y: auto; border: 1px solid #aeb8df; border-top: 5px solid var(--blue); background: var(--white); box-shadow: 0 24px 80px rgba(10, 19, 69, .28); }
+.modal-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 28px 30px 22px; border-bottom: 1px solid var(--line); }
+.modal-heading h2 { margin: 2px 0 0; font-size: 30px; letter-spacing: -.045em; }
+.modal-heading p { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
+.modal-close { padding: 9px 13px; border: 1px solid var(--navy); border-radius: 0; background: var(--white); color: var(--navy); font-size: 12px; font-weight: 700; cursor: pointer; }
+.modal-close:hover { background: var(--navy); color: var(--white); }
+.modal-summary { padding: 24px 30px; }
+.modal-section { padding: 22px 30px; border-top: 1px solid var(--line); }
+.modal-section h3 { margin: 3px 0 0; font-size: 18px; letter-spacing: -.025em; }
+.brand-requirements { display: grid; gap: 8px; margin-top: 16px; }
+.brand-requirements > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 15px; border-left: 3px solid var(--blue); background: #f5f6ff; }
+.brand-requirements strong { font-size: 13px; }
+.brand-requirements span { color: var(--muted); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; white-space: nowrap; }
+.modal-empty { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
+.modal-form-section details { padding: 14px 16px; border: 1px solid var(--line); background: #fbfbfd; }
+.modal-form-section details[open] { border-color: #aeb8ff; }
+.modal-form-section summary { color: var(--navy); font-size: 13px; font-weight: 700; cursor: pointer; }
 .empty-state { margin: 0; padding: 28px 22px; color: var(--muted); font-size: 13px; }
 
 @media (max-width: 1050px) {
@@ -205,6 +223,7 @@ button.table-row { cursor: pointer; }
   .management-panel { grid-template-columns: 1fr; }
   .profile-chip > span { display: none; }
   .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .modal-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -227,4 +246,10 @@ button.table-row { cursor: pointer; }
   .table-row > :nth-child(3), .table-row > :nth-child(4) { display: none; }
   .detail-panel { padding: 18px 16px; }
   .detail-grid { grid-template-columns: 1fr; gap: 12px; }
+  .modal-backdrop { align-items: end; padding: 12px; }
+  .entity-modal { max-height: calc(100vh - 24px); }
+  .modal-heading, .modal-section { padding-left: 18px; padding-right: 18px; }
+  .modal-heading h2 { font-size: 25px; }
+  .modal-summary { padding: 18px; grid-template-columns: 1fr; }
+  .brand-requirements > div { align-items: flex-start; flex-direction: column; gap: 4px; }
 }
