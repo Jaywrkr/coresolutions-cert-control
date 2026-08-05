@@ -1,11 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Award, Bell, Building2, ChevronRight, FileCheck2, LogOut, Search, ShieldCheck, Users } from "lucide-react";
+import { DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ArrowDown, ArrowUp, Award, Bell, Building2, ChevronRight, FileCheck2, GripVertical, LogOut, Search, ShieldCheck, Users } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseClient } from "../lib/supabase";
 
-type Brand = { id: string; name: string; slug: string; status: string; internal_owner: string | null; notes: string | null };
+type Brand = { id: string; name: string; slug: string; status: string; internal_owner: string | null; notes: string | null; sort_order: number };
 type Technician = { id: string; full_name: string; email: string | null; job_title: string | null; area: string | null; status: string; start_date: string | null; manager_name: string | null; notes: string | null };
 type Requirement = { id: string; brand_id: string; certification_id: string; required_count: number; distinct_people_required: boolean; mandatory: boolean; effective_from: string | null; effective_until: string | null; notes: string | null };
 type Certification = { id: string; brand_id: string; name: string; code: string | null; certification_type: string; level: string | null; validity_months: number | null; official_url: string | null; status: string; notes: string | null };
@@ -37,6 +37,11 @@ export default function Home() {
   const [activeSection, setActiveSection] = useState<Section>("summary");
   const [searchQuery, setSearchQuery] = useState("");
   const [showExpiringOnly, setShowExpiringOnly] = useState(false);
+  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+  const [selectedTechnicianId, setSelectedTechnicianId] = useState<string | null>(null);
+  const [selectedCertificationId, setSelectedCertificationId] = useState<string | null>(null);
+  const [selectedRequirementId, setSelectedRequirementId] = useState<string | null>(null);
+  const [draggedBrandId, setDraggedBrandId] = useState<string | null>(null);
 
   useEffect(() => {
     let supabase;
@@ -65,7 +70,7 @@ export default function Home() {
       const supabase = getSupabaseClient();
       setLoading(true);
       const [brandsResult, techniciansResult, requirementsResult, certificationsResult, recordsResult, profileResult] = await Promise.all([
-        supabase.from("brands").select("id,name,slug,status,internal_owner,notes").order("name"),
+        supabase.from("brands").select("id,name,slug,status,internal_owner,notes,sort_order").order("sort_order").order("name"),
         supabase.from("technicians").select("id,full_name,email,job_title,area,status,start_date,manager_name,notes").order("full_name"),
         supabase.from("brand_requirements").select("id,brand_id,certification_id,required_count,distinct_people_required,mandatory,effective_from,effective_until,notes"),
         supabase.from("certification_catalog").select("id,brand_id,name,code,certification_type,level,validity_months,official_url,status,notes").order("name"),
@@ -150,9 +155,54 @@ export default function Home() {
       internal_owner: asOptionalText(form.get("internal_owner")),
       notes: asOptionalText(form.get("notes")),
       status: "active",
+      sort_order: brands.length + 1,
     });
     if (result.error) setMessage(result.error.message);
     else { event.currentTarget.reset(); setMessage("Marca agregada."); await loadDashboard(); }
+  }
+
+  async function saveBrandOrder(nextBrands: Brand[]) {
+    setBrands(nextBrands);
+    const updates = await Promise.all(nextBrands.map((brand, index) =>
+      getSupabaseClient().from("brands").update({ sort_order: index + 1 }).eq("id", brand.id),
+    ));
+    const error = updates.find((result) => result.error)?.error;
+    if (error) {
+      setMessage(error.message);
+      await loadDashboard();
+    } else {
+      setMessage("Orden de marcas actualizado.");
+    }
+  }
+
+  function moveBrand(brandId: string, direction: -1 | 1) {
+    const currentIndex = brands.findIndex((brand) => brand.id === brandId);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= brands.length) return;
+    const nextBrands = [...brands];
+    [nextBrands[currentIndex], nextBrands[nextIndex]] = [nextBrands[nextIndex], nextBrands[currentIndex]];
+    void saveBrandOrder(nextBrands);
+  }
+
+  function handleBrandDragStart(event: DragEvent<HTMLElement>, brandId: string) {
+    if (!canManage) return;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", brandId);
+    setDraggedBrandId(brandId);
+  }
+
+  function handleBrandDrop(event: DragEvent<HTMLElement>, targetBrandId: string) {
+    event.preventDefault();
+    const sourceBrandId = draggedBrandId ?? event.dataTransfer.getData("text/plain");
+    setDraggedBrandId(null);
+    if (!sourceBrandId || sourceBrandId === targetBrandId) return;
+    const sourceIndex = brands.findIndex((brand) => brand.id === sourceBrandId);
+    const targetIndex = brands.findIndex((brand) => brand.id === targetBrandId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    const nextBrands = [...brands];
+    const [movedBrand] = nextBrands.splice(sourceIndex, 1);
+    nextBrands.splice(targetIndex, 0, movedBrand);
+    void saveBrandOrder(nextBrands);
   }
 
   async function handleAddTechnician(event: FormEvent<HTMLFormElement>) {
@@ -419,6 +469,11 @@ export default function Home() {
   const technicianNameById = useMemo(() => new Map(technicians.map((technician) => [technician.id, technician.full_name])), [technicians]);
   const certificationById = useMemo(() => new Map(certifications.map((certification) => [certification.id, certification])), [certifications]);
   const canManage = role === "admin" || role === "brand_manager";
+  const selectedBrand = brands.find((brand) => brand.id === selectedBrandId) ?? null;
+  const selectedBrandSummary = brandSummaries.find((brand) => brand.id === selectedBrandId) ?? null;
+  const selectedTechnician = technicians.find((technician) => technician.id === selectedTechnicianId) ?? null;
+  const selectedCertification = certifications.find((certification) => certification.id === selectedCertificationId) ?? null;
+  const selectedRequirement = requirements.find((requirement) => requirement.id === selectedRequirementId) ?? null;
   const visibleBrandSummaries = brandSummaries.filter((brand) => brand.name.toLocaleLowerCase().includes(normalizedQuery));
   const visibleTechnicians = technicians.filter((technician) => technician.full_name.toLocaleLowerCase().includes(normalizedQuery));
   const visibleRequirements = requirements.filter((requirement) => {
@@ -450,6 +505,10 @@ export default function Home() {
   function showSection(section: Section, options?: { query?: string; expiring?: boolean }) {
     setActiveSection(section);
     setShowExpiringOnly(options?.expiring ?? false);
+    setSelectedBrandId(null);
+    setSelectedTechnicianId(null);
+    setSelectedCertificationId(null);
+    setSelectedRequirementId(null);
     if (options?.query !== undefined) setSearchQuery(options.query);
   }
 
@@ -554,14 +613,19 @@ export default function Home() {
 
         {activeSection === "brands" && canManage && <section className="management-panel contextual-management">
           <div><span className="kicker">ADMINISTRACIÓN DE MARCAS</span><h2>Agregar una marca</h2><p>Registra las marcas con su responsable interno y notas de contexto.</p></div>
-          <div className="management-actions"><details open><summary>Nueva marca</summary><form onSubmit={handleAddBrand} className="inline-form"><input name="name" placeholder="Nombre de la marca" required /><input name="internal_owner" placeholder="Responsable interno" /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar marca</button></form></details></div>
+          <div className="management-actions"><details><summary>Nueva marca</summary><form onSubmit={handleAddBrand} className="inline-form"><input name="name" placeholder="Nombre de la marca" required /><input name="internal_owner" placeholder="Responsable interno" /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar marca</button></form></details></div>
+        </section>}
+
+        {activeSection === "brands" && selectedBrand && selectedBrandSummary && <section className="detail-panel">
+          <div className="detail-heading"><div><span className="kicker">MARCA SELECCIONADA</span><h2>{selectedBrand.name}</h2></div><button className="text-button" onClick={() => setSelectedBrandId(null)}>Cerrar ficha</button></div>
+          <div className="detail-grid"><div><span>Estado</span><strong>{selectedBrand.status}</strong></div><div><span>Responsable</span><strong>{selectedBrand.internal_owner ?? "Sin asignar"}</strong></div><div><span>Cobertura</span><strong>{selectedBrandSummary.covered} de {selectedBrandSummary.required} cupos</strong></div><div><span>Cumplimiento</span><strong>{selectedBrandSummary.compliance}%</strong></div><div><span>Certificaciones</span><strong>{certifications.filter((certification) => certification.brand_id === selectedBrand.id).length}</strong></div><div><span>Notas</span><strong>{selectedBrand.notes ?? "Sin notas"}</strong></div></div>
         </section>}
 
         {activeSection === "brands" && <section className="panel data-panel">
           <div className="panel-heading"><div><span className="kicker">CATÁLOGO</span><h2>Marcas</h2></div><span className="result-count">{visibleBrandSummaries.length} resultados</span></div>
           <div className="table-list">
-            {visibleBrandSummaries.map((brand) => <article className="table-row" key={brand.id}>
-              <div className="brand-logo">{brand.name.slice(0, 2).toUpperCase()}</div><div><strong>{brand.name}</strong><span>{brand.internal_owner ?? "Sin responsable"}</span></div><span className={`status ${brand.status.toLowerCase().replace(" ", "-")}`}>{brand.status}</span><span>{brand.covered} de {brand.required} cupos</span>{canManage ? <div className="row-actions"><button onClick={() => editBrand(brands.find((item) => item.id === brand.id)!)}>Editar</button><button onClick={() => removeBrand(brands.find((item) => item.id === brand.id)!)}>Eliminar</button></div> : <button className="text-button" onClick={() => showSection("requirements", { query: brand.name })}>Ver requisitos</button>}
+            {visibleBrandSummaries.map((brand) => <article className={`table-row draggable-row ${selectedBrandId === brand.id ? "selected-row" : ""}`} key={brand.id} draggable={canManage} onClick={() => setSelectedBrandId(brand.id)} onDragStart={(event) => handleBrandDragStart(event, brand.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => handleBrandDrop(event, brand.id)} onDragEnd={() => setDraggedBrandId(null)}>
+              <div className="brand-logo">{canManage ? <GripVertical size={18} /> : brand.name.slice(0, 2).toUpperCase()}</div><div><strong>{brand.name}</strong><span>{brand.internal_owner ?? "Sin responsable"}</span></div><span className={`status ${brand.status.toLowerCase().replace(" ", "-")}`}>{brand.status}</span><span>{brand.covered} de {brand.required} cupos</span>{canManage ? <div className="row-actions reorder-actions"><button aria-label={`Subir ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === 0} onClick={() => moveBrand(brand.id, -1)}><ArrowUp size={15}/></button><button aria-label={`Bajar ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === brands.length - 1} onClick={() => moveBrand(brand.id, 1)}><ArrowDown size={15}/></button><button onClick={() => editBrand(brands.find((item) => item.id === brand.id)!)}>Editar</button><button onClick={() => removeBrand(brands.find((item) => item.id === brand.id)!)}>Eliminar</button></div> : <button className="text-button" onClick={() => showSection("requirements", { query: brand.name })}>Ver requisitos</button>}
             </article>)}
             {visibleBrandSummaries.length === 0 && <p className="empty-state">No hay marcas que coincidan con la búsqueda.</p>}
           </div>
@@ -569,13 +633,18 @@ export default function Home() {
 
         {activeSection === "technicians" && canManage && <section className="management-panel contextual-management">
           <div><span className="kicker">ADMINISTRACIÓN DE TÉCNICOS</span><h2>Agregar un técnico</h2><p>Registra al personal con sus datos de contacto, cargo, área y responsable.</p></div>
-          <div className="management-actions"><details open><summary>Nuevo técnico</summary><form onSubmit={handleAddTechnician} className="inline-form"><input name="full_name" placeholder="Nombre completo" required /><input name="email" type="email" placeholder="Correo (opcional)" /><input name="job_title" placeholder="Cargo (opcional)" /><input name="area" placeholder="Área (opcional)" /><input name="start_date" type="date" title="Fecha de ingreso" /><input name="manager_name" placeholder="Responsable (opcional)" /><button>Guardar técnico</button></form></details></div>
+          <div className="management-actions"><details><summary>Nuevo técnico</summary><form onSubmit={handleAddTechnician} className="inline-form"><input name="full_name" placeholder="Nombre completo" required /><input name="email" type="email" placeholder="Correo (opcional)" /><input name="job_title" placeholder="Cargo (opcional)" /><input name="area" placeholder="Área (opcional)" /><input name="start_date" type="date" title="Fecha de ingreso" /><input name="manager_name" placeholder="Responsable (opcional)" /><button>Guardar técnico</button></form></details></div>
+        </section>}
+
+        {activeSection === "technicians" && selectedTechnician && <section className="detail-panel">
+          <div className="detail-heading"><div><span className="kicker">TÉCNICO SELECCIONADO</span><h2>{selectedTechnician.full_name}</h2></div><button className="text-button" onClick={() => setSelectedTechnicianId(null)}>Cerrar ficha</button></div>
+          <div className="detail-grid"><div><span>Estado</span><strong>{selectedTechnician.status}</strong></div><div><span>Correo</span><strong>{selectedTechnician.email ?? "Sin correo"}</strong></div><div><span>Cargo</span><strong>{selectedTechnician.job_title ?? "Sin cargo"}</strong></div><div><span>Área</span><strong>{selectedTechnician.area ?? "Sin área"}</strong></div><div><span>Certificaciones</span><strong>{records.filter((record) => record.technician_id === selectedTechnician.id).length}</strong></div><div><span>Responsable</span><strong>{selectedTechnician.manager_name ?? "Sin asignar"}</strong></div></div>
         </section>}
 
         {activeSection === "technicians" && <section className="panel data-panel">
           <div className="panel-heading"><div><span className="kicker">EQUIPO</span><h2>Técnicos</h2></div><span className="result-count">{visibleTechnicians.length} resultados</span></div>
           <div className="table-list">
-            {visibleTechnicians.map((technician) => <article className="table-row" key={technician.id}>
+            {visibleTechnicians.map((technician) => <article className={`table-row selectable-row ${selectedTechnicianId === technician.id ? "selected-row" : ""}`} key={technician.id} onClick={() => setSelectedTechnicianId(technician.id)}>
               <div className="brand-logo">{technician.full_name.slice(0, 2).toUpperCase()}</div><div><strong>{technician.full_name}</strong><span>{technician.email ?? technician.job_title ?? "Sin datos de contacto"}</span></div><span className={`status ${technician.status === "active" ? "cumplido" : "pendiente"}`}>{technician.status}</span><span>{technician.area ?? "Sin área"}</span>{canManage ? <div className="row-actions"><button onClick={() => editTechnician(technician)}>Editar</button><button onClick={() => removeTechnician(technician)}>Eliminar</button></div> : <button className="text-button" onClick={() => showSection("certifications", { query: technician.full_name })}>Ver certificados</button>}
             </article>)}
             {visibleTechnicians.length === 0 && <p className="empty-state">No hay técnicos que coincidan con la búsqueda.</p>}
@@ -585,9 +654,14 @@ export default function Home() {
         {activeSection === "certifications" && canManage && <section className="management-panel contextual-management">
           <div><span className="kicker">ADMINISTRACIÓN DE CERTIFICACIONES</span><h2>Catálogo y asignaciones</h2><p>Crea certificaciones por marca y asígnalas al técnico que ya las posee.</p></div>
           <div className="management-actions">
-            <details open><summary>Nueva certificación</summary><form onSubmit={handleAddCatalogCertification} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><input name="name" placeholder="Nombre de certificación" required /><input name="code" placeholder="Código (opcional)" /><button>Guardar certificación</button></form></details>
+            <details><summary>Nueva certificación</summary><form onSubmit={handleAddCatalogCertification} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><input name="name" placeholder="Nombre de certificación" required /><input name="code" placeholder="Código (opcional)" /><button>Guardar certificación</button></form></details>
             <details><summary>Asignar a técnico</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><select name="technician_id" required><option value="">Técnico</option>{technicians.filter((technician) => technician.status === "active").map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><select name="certification_id" required><option value="">Certificación</option>{certifications.filter((certification) => certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select><input name="issued_at" type="date" title="Fecha de emisión" /><input name="expires_at" type="date" title="Fecha de vencimiento" /><input name="certificate_number" placeholder="N.º de certificado" /><input name="verification_url" type="url" placeholder="Enlace de evidencia" /><select name="status" defaultValue="active"><option value="active">Vigente</option><option value="expiring">Por vencer</option><option value="pending_validation">Pendiente de validar</option></select><button>Guardar asignación</button></form></details>
           </div>
+        </section>}
+
+        {activeSection === "certifications" && selectedCertification && <section className="detail-panel">
+          <div className="detail-heading"><div><span className="kicker">CERTIFICACIÓN SELECCIONADA</span><h2>{selectedCertification.name}</h2></div><button className="text-button" onClick={() => setSelectedCertificationId(null)}>Cerrar ficha</button></div>
+          <div className="detail-grid"><div><span>Marca</span><strong>{brandNameById.get(selectedCertification.brand_id) ?? "Sin marca"}</strong></div><div><span>Código</span><strong>{selectedCertification.code ?? "Sin código"}</strong></div><div><span>Tipo</span><strong>{selectedCertification.certification_type}</strong></div><div><span>Estado</span><strong>{selectedCertification.status}</strong></div><div><span>Técnicos certificados</span><strong>{new Set(records.filter((record) => record.certification_id === selectedCertification.id).map((record) => record.technician_id)).size}</strong></div><div><span>Requisitos asociados</span><strong>{requirements.filter((requirement) => requirement.certification_id === selectedCertification.id).length}</strong></div></div>
         </section>}
 
         {activeSection === "certifications" && <section className="panel data-panel">
@@ -595,13 +669,13 @@ export default function Home() {
           <div className="table-list">
             {canManage && <>
               <div className="panel-heading"><span className="kicker">CATÁLOGO ADMINISTRABLE</span><strong>{visibleCatalog.length} certificaciones</strong></div>
-              {visibleCatalog.map((certification) => <article className="table-row catalog-row" key={certification.id}>
+              {visibleCatalog.map((certification) => <article className={`table-row catalog-row selectable-row ${selectedCertificationId === certification.id ? "selected-row" : ""}`} key={certification.id} onClick={() => setSelectedCertificationId(certification.id)}>
                 <div className="brand-logo"><Award size={18}/></div><div><strong>{certification.name}</strong><span>{brandNameById.get(certification.brand_id) ?? "Marca sin identificar"} · {certification.code ?? "Sin código"}</span></div><span className={`status ${certification.status === "active" ? "cumplido" : "pendiente"}`}>{certification.status}</span><span>{certification.validity_months ? `${certification.validity_months} meses de vigencia` : certification.level ?? "Sin vigencia definida"}</span><div className="row-actions"><button onClick={() => editCatalogCertification(certification)}>Editar</button><button onClick={() => removeCatalogCertification(certification)}>Eliminar</button></div>
               </article>)}
               {visibleCatalog.length === 0 && <p className="empty-state">No hay certificaciones de catálogo que coincidan con la búsqueda.</p>}
               <div className="panel-heading"><span className="kicker">ASIGNACIONES</span><strong>{visibleRecords.length} certificaciones de técnicos</strong></div>
             </>}
-            {visibleRecords.map((record) => <article className="table-row" key={record.id}>
+            {visibleRecords.map((record) => <article className={`table-row selectable-row ${selectedCertificationId === record.certification_id ? "selected-row" : ""}`} key={record.id} onClick={() => setSelectedCertificationId(record.certification_id)}>
               <div className="brand-logo"><Award size={18}/></div><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>{certificationById.get(record.certification_id)?.name ?? record.certification_id}</span></div><span className={`status ${record.status === "active" ? "cumplido" : "pendiente"}`}>{record.status}</span><span>Vence: {formatDate(record.expires_at)}</span>{canManage ? <div className="row-actions"><button onClick={() => editTechnicianCertification(record)}>Editar</button><button onClick={() => deleteTechnicianCertification(record)}>Eliminar</button></div> : <span />}
             </article>)}
             {visibleRecords.length === 0 && <p className="empty-state">No hay certificaciones que coincidan con los filtros actuales.</p>}
@@ -610,13 +684,18 @@ export default function Home() {
 
         {activeSection === "requirements" && canManage && <section className="management-panel contextual-management">
           <div><span className="kicker">ADMINISTRACIÓN DE REQUISITOS</span><h2>Agregar un requisito</h2><p>Define cuántos técnicos certificados requiere cada marca para cumplir.</p></div>
-          <div className="management-actions"><details open><summary>Nuevo requisito</summary><form onSubmit={handleAddRequirement} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><select name="certification_id" required><option value="">Certificación</option>{certifications.filter((certification) => certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select><input name="required_count" type="number" min="1" defaultValue="1" required /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar requisito</button></form></details></div>
+          <div className="management-actions"><details><summary>Nuevo requisito</summary><form onSubmit={handleAddRequirement} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><select name="certification_id" required><option value="">Certificación</option>{certifications.filter((certification) => certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select><input name="required_count" type="number" min="1" defaultValue="1" required /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar requisito</button></form></details></div>
+        </section>}
+
+        {activeSection === "requirements" && selectedRequirement && <section className="detail-panel">
+          <div className="detail-heading"><div><span className="kicker">REQUISITO SELECCIONADO</span><h2>{brandNameById.get(selectedRequirement.brand_id) ?? "Marca sin identificar"}</h2></div><button className="text-button" onClick={() => setSelectedRequirementId(null)}>Cerrar ficha</button></div>
+          <div className="detail-grid"><div><span>Certificación</span><strong>{certificationById.get(selectedRequirement.certification_id)?.name ?? "Sin identificar"}</strong></div><div><span>Cupos requeridos</span><strong>{selectedRequirement.required_count}</strong></div><div><span>Cubiertos</span><strong>{new Set(records.filter((record) => record.certification_id === selectedRequirement.certification_id && record.status === "active").map((record) => record.technician_id)).size}</strong></div><div><span>Obligatorio</span><strong>{selectedRequirement.mandatory ? "Sí" : "No"}</strong></div><div><span>Técnicos distintos</span><strong>{selectedRequirement.distinct_people_required ? "Sí" : "No"}</strong></div><div><span>Vigencia</span><strong>{formatDate(selectedRequirement.effective_from)} - {formatDate(selectedRequirement.effective_until)}</strong></div></div>
         </section>}
 
         {activeSection === "requirements" && <section className="panel data-panel">
           <div className="panel-heading"><div><span className="kicker">COBERTURA</span><h2>Requisitos</h2></div><button className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button></div>
           <div className="table-list">
-            {visibleRequirements.map((requirement) => <article className="table-row" key={requirement.id}>
+            {visibleRequirements.map((requirement) => <article className={`table-row selectable-row ${selectedRequirementId === requirement.id ? "selected-row" : ""}`} key={requirement.id} onClick={() => setSelectedRequirementId(requirement.id)}>
               <div className="brand-logo"><FileCheck2 size={18}/></div><div><strong>{brandNameById.get(requirement.brand_id) ?? "Marca sin identificar"}</strong><span>{certificationById.get(requirement.certification_id)?.name ?? requirement.certification_id}</span></div><span>{requirement.required_count} cupos requeridos</span><span>{new Set(records.filter((record) => record.certification_id === requirement.certification_id && record.status === "active").map((record) => record.technician_id)).size} cubiertos</span>{canManage ? <div className="row-actions"><button onClick={() => editFullRequirement(requirement)}>Editar</button><button onClick={() => deleteRequirement(requirement)}>Eliminar</button></div> : <span />}
             </article>)}
             {visibleRequirements.length === 0 && <p className="empty-state">No hay requisitos que coincidan con la búsqueda.</p>}
