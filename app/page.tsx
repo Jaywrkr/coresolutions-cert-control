@@ -9,6 +9,7 @@ type Brand = { id: string; name: string; status: string };
 type Technician = { id: string; full_name: string; status: string };
 type Requirement = { id: string; brand_id: string; certification_id: string; required_count: number };
 type CertificationRecord = { id: string; certification_id: string; technician_id: string; status: string; expires_at: string | null };
+type Section = "summary" | "brands" | "technicians" | "certifications" | "requirements";
 
 type BrandSummary = {
   id: string;
@@ -29,6 +30,9 @@ export default function Home() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [records, setRecords] = useState<CertificationRecord[]>([]);
+  const [activeSection, setActiveSection] = useState<Section>("summary");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showExpiringOnly, setShowExpiringOnly] = useState(false);
 
   useEffect(() => {
     let supabase;
@@ -150,6 +154,41 @@ export default function Home() {
     return days >= 0 && days <= 90;
   }).length;
   const openGaps = Math.max(totalRequired - totalCovered, 0);
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+  const brandNameById = useMemo(() => new Map(brands.map((brand) => [brand.id, brand.name])), [brands]);
+  const technicianNameById = useMemo(() => new Map(technicians.map((technician) => [technician.id, technician.full_name])), [technicians]);
+  const visibleBrandSummaries = brandSummaries.filter((brand) => brand.name.toLocaleLowerCase().includes(normalizedQuery));
+  const visibleTechnicians = technicians.filter((technician) => technician.full_name.toLocaleLowerCase().includes(normalizedQuery));
+  const visibleRequirements = requirements.filter((requirement) => {
+    const brandName = brandNameById.get(requirement.brand_id) ?? requirement.brand_id;
+    return `${brandName} ${requirement.certification_id}`.toLocaleLowerCase().includes(normalizedQuery);
+  });
+  const visibleRecords = records.filter((record) => {
+    const technicianName = technicianNameById.get(record.technician_id) ?? record.technician_id;
+    const matchesSearch = `${technicianName} ${record.certification_id} ${record.status}`.toLocaleLowerCase().includes(normalizedQuery);
+    if (!matchesSearch) return false;
+    if (!showExpiringOnly) return true;
+    if (!record.expires_at) return false;
+    const days = (new Date(record.expires_at).getTime() - Date.now()) / 86400000;
+    return days >= 0 && days <= 90;
+  });
+  const sectionTitles: Record<Section, string> = {
+    summary: "Certificaciones",
+    brands: "Marcas",
+    technicians: "Técnicos",
+    certifications: "Certificaciones",
+    requirements: "Requisitos",
+  };
+
+  function showSection(section: Section, options?: { query?: string; expiring?: boolean }) {
+    setActiveSection(section);
+    setShowExpiringOnly(options?.expiring ?? false);
+    if (options?.query !== undefined) setSearchQuery(options.query);
+  }
+
+  function formatDate(value: string | null) {
+    return value ? new Intl.DateTimeFormat("es-EC", { dateStyle: "medium" }).format(new Date(`${value}T00:00:00`)) : "Sin fecha";
+  }
 
   if (loading && !session) {
     return <div className="loading-screen">Cargando CoreCert…</div>;
@@ -182,11 +221,11 @@ export default function Home() {
       <aside className="sidebar">
         <div className="brand-block"><div className="brand-mark">CORE</div><span>CoreCert</span></div>
         <nav>
-          <a className="active"><ShieldCheck size={19}/>Resumen</a>
-          <a><Building2 size={19}/>Marcas</a>
-          <a><Users size={19}/>Técnicos</a>
-          <a><Award size={19}/>Certificaciones</a>
-          <a><FileCheck2 size={19}/>Requisitos</a>
+          <button className={activeSection === "summary" ? "active" : ""} onClick={() => showSection("summary")}><ShieldCheck size={19}/>Resumen</button>
+          <button className={activeSection === "brands" ? "active" : ""} onClick={() => showSection("brands")}><Building2 size={19}/>Marcas</button>
+          <button className={activeSection === "technicians" ? "active" : ""} onClick={() => showSection("technicians")}><Users size={19}/>Técnicos</button>
+          <button className={activeSection === "certifications" ? "active" : ""} onClick={() => showSection("certifications")}><Award size={19}/>Certificaciones</button>
+          <button className={activeSection === "requirements" ? "active" : ""} onClick={() => showSection("requirements")}><FileCheck2 size={19}/>Requisitos</button>
         </nav>
         <button className="logout-button" onClick={handleSignOut}><LogOut size={17}/>Cerrar sesión</button>
         <div className="sidebar-footer">Coresolutions · Uso interno</div>
@@ -194,42 +233,44 @@ export default function Home() {
 
       <section className="content">
         <header className="topbar">
-          <div><p className="eyebrow">CONTROL DE CANAL</p><h1>Certificaciones</h1></div>
+          <div><p className="eyebrow">CONTROL DE CANAL</p><h1>{sectionTitles[activeSection]}</h1></div>
           <div className="top-actions">
-            <div className="search"><Search size={18}/><span>Buscar</span></div>
-            <button className="icon-button" aria-label="Alertas"><Bell size={19}/>{openGaps > 0 && <i />}</button>
+            <label className="search"><Search size={18}/><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Buscar" aria-label="Buscar en el dashboard" /></label>
+            <button className="icon-button" aria-label="Ver alertas" onClick={() => showSection("requirements")}><Bell size={19}/>{openGaps > 0 && <i />}</button>
             <div className="avatar">{session.user.email?.slice(0, 2).toUpperCase()}</div>
           </div>
         </header>
 
         {message && <div className="data-message">{message}</div>}
 
+        {activeSection === "summary" && <>
         <section className="hero-card">
           <div><span className="hero-label">CUMPLIMIENTO GENERAL</span><strong>{generalCompliance}%</strong><p>{totalCovered} de {totalRequired} cupos requeridos están cubiertos.</p></div>
           <div className="hero-progress"><span style={{ width: `${generalCompliance}%` }} /></div>
-          <button>Ver brechas <ChevronRight size={17}/></button>
+          <button onClick={() => showSection("requirements")}>Ver brechas <ChevronRight size={17}/></button>
         </section>
 
         <section className="stats-grid">
-          <article><span>Marcas activas</span><strong>{activeBrands}</strong><small>{brandSummaries.filter((brand) => brand.required > 0).length} con requisitos cargados</small></article>
-          <article><span>Técnicos</span><strong>{activeTechnicians}</strong><small>Personal activo registrado</small></article>
-          <article><span>Por vencer</span><strong>{expiringSoon}</strong><small>En los próximos 90 días</small></article>
-          <article><span>Brechas abiertas</span><strong>{openGaps}</strong><small>Requieren acción</small></article>
+          <button className="stat-card" onClick={() => showSection("brands")}><span>Marcas activas</span><strong>{activeBrands}</strong><small>{brandSummaries.filter((brand) => brand.required > 0).length} con requisitos cargados</small></button>
+          <button className="stat-card" onClick={() => showSection("technicians")}><span>Técnicos</span><strong>{activeTechnicians}</strong><small>Personal activo registrado</small></button>
+          <button className="stat-card" onClick={() => showSection("certifications", { expiring: true })}><span>Por vencer</span><strong>{expiringSoon}</strong><small>En los próximos 90 días</small></button>
+          <button className="stat-card" onClick={() => showSection("requirements")}><span>Brechas abiertas</span><strong>{openGaps}</strong><small>Requieren acción</small></button>
         </section>
+        </>}
 
-        <section className="main-grid">
+        {activeSection === "summary" && <section className="main-grid">
           <div className="panel brands-panel">
             <div className="panel-heading"><div><span className="kicker">DATOS REALES</span><h2>Cumplimiento por marca</h2></div></div>
             <div className="brand-list">
-              {brandSummaries.map((brand) => (
-                <article className="brand-row" key={brand.id}>
+              {visibleBrandSummaries.map((brand) => (
+                <button className="brand-row row-button" key={brand.id} onClick={() => showSection("requirements", { query: brand.name })}>
                   <div className="brand-logo">{brand.name.slice(0, 2).toUpperCase()}</div>
                   <div className="brand-info"><strong>{brand.name}</strong><span>{brand.required === 0 ? "Sin requisitos cargados" : `${Math.max(brand.required - brand.covered, 0)} cupos pendientes`}</span></div>
                   <div className="requirement-count"><span>Cobertura</span><strong>{brand.covered} de {brand.required}</strong></div>
                   <div className="progress-wrap"><div><span style={{ width: `${brand.compliance}%` }}/></div><b>{brand.compliance}%</b></div>
                   <span className={`status ${brand.status.toLowerCase().replace(" ", "-")}`}>{brand.status}</span>
                   <ChevronRight size={18} className="chevron"/>
-                </article>
+                </button>
               ))}
             </div>
           </div>
@@ -237,12 +278,52 @@ export default function Home() {
           <aside className="panel alert-panel">
             <div className="panel-heading"><div><span className="kicker">ESTADO</span><h2>Resumen</h2></div><span className="badge">{openGaps}</span></div>
             <div className="alert-list">
-              <article className={`alert ${openGaps > 0 ? "critical" : "neutral"}`}><span className="alert-dot"/><div><strong>Brechas de certificación</strong><p>{openGaps > 0 ? `${openGaps} cupos requeridos todavía no están cubiertos.` : "Todos los requisitos están cubiertos."}</p></div><ChevronRight size={17}/></article>
-              <article className={`alert ${expiringSoon > 0 ? "warning" : "neutral"}`}><span className="alert-dot"/><div><strong>Próximos vencimientos</strong><p>{expiringSoon} certificados vencen en los próximos 90 días.</p></div><ChevronRight size={17}/></article>
-              <article className="alert neutral"><span className="alert-dot"/><div><strong>Base conectada</strong><p>Los indicadores ya se calculan desde Supabase.</p></div><ChevronRight size={17}/></article>
+              <button className={`alert alert-button ${openGaps > 0 ? "critical" : "neutral"}`} onClick={() => showSection("requirements")}><span className="alert-dot"/><div><strong>Brechas de certificación</strong><p>{openGaps > 0 ? `${openGaps} cupos requeridos todavía no están cubiertos.` : "Todos los requisitos están cubiertos."}</p></div><ChevronRight size={17}/></button>
+              <button className={`alert alert-button ${expiringSoon > 0 ? "warning" : "neutral"}`} onClick={() => showSection("certifications", { expiring: true })}><span className="alert-dot"/><div><strong>Próximos vencimientos</strong><p>{expiringSoon} certificados vencen en los próximos 90 días.</p></div><ChevronRight size={17}/></button>
+              <button className="alert alert-button neutral" onClick={() => showSection("summary")}><span className="alert-dot"/><div><strong>Base conectada</strong><p>Los indicadores ya se calculan desde Supabase.</p></div><ChevronRight size={17}/></button>
             </div>
           </aside>
-        </section>
+        </section>}
+
+        {activeSection === "brands" && <section className="panel data-panel">
+          <div className="panel-heading"><div><span className="kicker">CATÁLOGO</span><h2>Marcas</h2></div><span className="result-count">{visibleBrandSummaries.length} resultados</span></div>
+          <div className="table-list">
+            {visibleBrandSummaries.map((brand) => <button className="table-row" key={brand.id} onClick={() => showSection("requirements", { query: brand.name })}>
+              <div className="brand-logo">{brand.name.slice(0, 2).toUpperCase()}</div><div><strong>{brand.name}</strong><span>ID: {brand.id}</span></div><span className={`status ${brand.status.toLowerCase().replace(" ", "-")}`}>{brand.status}</span><span>{brand.covered} de {brand.required} cupos</span><ChevronRight size={18}/>
+            </button>)}
+            {visibleBrandSummaries.length === 0 && <p className="empty-state">No hay marcas que coincidan con la búsqueda.</p>}
+          </div>
+        </section>}
+
+        {activeSection === "technicians" && <section className="panel data-panel">
+          <div className="panel-heading"><div><span className="kicker">EQUIPO</span><h2>Técnicos</h2></div><span className="result-count">{visibleTechnicians.length} resultados</span></div>
+          <div className="table-list">
+            {visibleTechnicians.map((technician) => <button className="table-row" key={technician.id} onClick={() => showSection("certifications", { query: technician.full_name })}>
+              <div className="brand-logo">{technician.full_name.slice(0, 2).toUpperCase()}</div><div><strong>{technician.full_name}</strong><span>ID: {technician.id}</span></div><span className={`status ${technician.status === "active" ? "cumplido" : "pendiente"}`}>{technician.status}</span><span>Ver certificaciones</span><ChevronRight size={18}/>
+            </button>)}
+            {visibleTechnicians.length === 0 && <p className="empty-state">No hay técnicos que coincidan con la búsqueda.</p>}
+          </div>
+        </section>}
+
+        {activeSection === "certifications" && <section className="panel data-panel">
+          <div className="panel-heading"><div><span className="kicker">VIGENCIAS</span><h2>{showExpiringOnly ? "Próximos vencimientos" : "Certificaciones"}</h2></div><button className="text-button" onClick={() => { setShowExpiringOnly(false); setSearchQuery(""); }}>Limpiar filtros</button></div>
+          <div className="table-list">
+            {visibleRecords.map((record) => <article className="table-row" key={record.id}>
+              <div className="brand-logo"><Award size={18}/></div><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>Certificación: {record.certification_id}</span></div><span className={`status ${record.status === "valid" ? "cumplido" : "pendiente"}`}>{record.status}</span><span>Vence: {formatDate(record.expires_at)}</span><span />
+            </article>)}
+            {visibleRecords.length === 0 && <p className="empty-state">No hay certificaciones que coincidan con los filtros actuales.</p>}
+          </div>
+        </section>}
+
+        {activeSection === "requirements" && <section className="panel data-panel">
+          <div className="panel-heading"><div><span className="kicker">COBERTURA</span><h2>Requisitos</h2></div><button className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button></div>
+          <div className="table-list">
+            {visibleRequirements.map((requirement) => <article className="table-row" key={requirement.id}>
+              <div className="brand-logo"><FileCheck2 size={18}/></div><div><strong>{brandNameById.get(requirement.brand_id) ?? "Marca sin identificar"}</strong><span>Certificación: {requirement.certification_id}</span></div><span>{requirement.required_count} cupos requeridos</span><span>{new Set(records.filter((record) => record.certification_id === requirement.certification_id && record.status === "valid").map((record) => record.technician_id)).size} cubiertos</span><span />
+            </article>)}
+            {visibleRequirements.length === 0 && <p className="empty-state">No hay requisitos que coincidan con la búsqueda.</p>}
+          </div>
+        </section>}
       </section>
     </main>
   );
