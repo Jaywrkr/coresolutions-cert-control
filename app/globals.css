@@ -102,6 +102,17 @@ h1 { font-size: 32px; line-height: 1; margin: 0; letter-spacing: -.04em; }
 .logout-button { display: flex; align-items: center; gap: 9px; margin-top: auto; border: 0; background: transparent; color: rgba(255,255,255,.68); padding: 12px 14px; cursor: pointer; }
 .sidebar .logout-button + .sidebar-footer { margin-top: 0; }
 .data-message { margin-bottom: 18px; }
+.management-panel { display: grid; grid-template-columns: minmax(190px, .55fr) minmax(0, 1.45fr); gap: 20px; margin-bottom: 18px; padding: 20px 22px; border: 1px solid #dfe3ff; border-radius: 12px; background: #f8f9ff; }
+.management-panel h2 { margin: 0; font-size: 18px; }
+.management-panel p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.management-actions { display: grid; gap: 8px; }
+.management-actions details { border: 1px solid var(--line); border-radius: 8px; background: white; padding: 10px 12px; }
+.management-actions summary { cursor: pointer; color: var(--navy); font-size: 13px; font-weight: 700; }
+.inline-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.inline-form input, .inline-form select { min-width: 130px; flex: 1 1 150px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 9px; background: white; font-size: 12px; }
+.inline-form button, .row-actions button { border: 0; border-radius: 6px; background: var(--navy); color: white; padding: 8px 11px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.row-actions button:last-child { background: #8d1d2a; }
 .data-panel { overflow: hidden; }
 .result-count { color: var(--muted); font-size: 12px; }
 .table-list { border-top: 1px solid var(--line); }
