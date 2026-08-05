@@ -1,6 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-let supabaseClient: ReturnType<typeof createClient> | undefined;
+let supabaseClient: SupabaseClient<any> | undefined;
 
 export function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -11,7 +11,7 @@ export function getSupabaseClient() {
   }
 
   if (!supabaseClient) {
-    supabaseClient = createClient(supabaseUrl, supabasePublishableKey);
+    supabaseClient = createClient<any>(supabaseUrl, supabasePublishableKey);
   }
 
   return supabaseClient;
