@@ -310,7 +310,7 @@ export default function Home() {
           <div className="top-actions">
             <label className="search"><Search size={18}/><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Buscar" aria-label="Buscar en el dashboard" /></label>
             <button className="icon-button" aria-label="Ver alertas" onClick={() => showSection("requirements")}><Bell size={19}/>{openGaps > 0 && <i />}</button>
-            <div className="avatar">{session.user.email?.slice(0, 2).toUpperCase()}</div>
+            <div className="profile-chip"><span>{canManage ? "Administrador" : "Usuario"}</span><div className="avatar">{session.user.email?.slice(0, 2).toUpperCase()}</div></div>
           </div>
         </header>
 
