@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
+let supabaseClient: ReturnType<typeof createClient> | undefined;
+
 export function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabasePublishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -8,5 +10,9 @@ export function getSupabaseClient() {
     throw new Error("Missing Supabase environment variables");
   }
 
-  return createClient(supabaseUrl, supabasePublishableKey);
+  if (!supabaseClient) {
+    supabaseClient = createClient(supabaseUrl, supabasePublishableKey);
+  }
+
+  return supabaseClient;
 }
