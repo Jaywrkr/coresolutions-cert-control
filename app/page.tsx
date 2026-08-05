@@ -5,16 +5,17 @@ import { Award, Bell, Building2, ChevronRight, FileCheck2, LogOut, Search, Shiel
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseClient } from "../lib/supabase";
 
-type Brand = { id: string; name: string; status: string };
-type Technician = { id: string; full_name: string; status: string };
-type Requirement = { id: string; brand_id: string; certification_id: string; required_count: number; notes: string | null };
-type Certification = { id: string; brand_id: string; name: string; code: string | null; status: string };
+type Brand = { id: string; name: string; slug: string; status: string; internal_owner: string | null; notes: string | null };
+type Technician = { id: string; full_name: string; email: string | null; job_title: string | null; area: string | null; status: string; start_date: string | null; manager_name: string | null; notes: string | null };
+type Requirement = { id: string; brand_id: string; certification_id: string; required_count: number; distinct_people_required: boolean; mandatory: boolean; effective_from: string | null; effective_until: string | null; notes: string | null };
+type Certification = { id: string; brand_id: string; name: string; code: string | null; certification_type: string; level: string | null; validity_months: number | null; official_url: string | null; status: string; notes: string | null };
 type CertificationRecord = { id: string; certification_id: string; technician_id: string; status: string; expires_at: string | null; issued_at: string | null; certificate_number: string | null; verification_url: string | null };
 type Section = "summary" | "brands" | "technicians" | "certifications" | "requirements";
 
 type BrandSummary = {
   id: string;
   name: string;
+  internal_owner: string | null;
   required: number;
   covered: number;
   compliance: number;
@@ -64,10 +65,10 @@ export default function Home() {
       const supabase = getSupabaseClient();
       setLoading(true);
       const [brandsResult, techniciansResult, requirementsResult, certificationsResult, recordsResult, profileResult] = await Promise.all([
-        supabase.from("brands").select("id,name,status").order("name"),
-        supabase.from("technicians").select("id,full_name,status").order("full_name"),
-        supabase.from("brand_requirements").select("id,brand_id,certification_id,required_count,notes"),
-        supabase.from("certification_catalog").select("id,brand_id,name,code,status").order("name"),
+        supabase.from("brands").select("id,name,slug,status,internal_owner,notes").order("name"),
+        supabase.from("technicians").select("id,full_name,email,job_title,area,status,start_date,manager_name,notes").order("full_name"),
+        supabase.from("brand_requirements").select("id,brand_id,certification_id,required_count,distinct_people_required,mandatory,effective_from,effective_until,notes"),
+        supabase.from("certification_catalog").select("id,brand_id,name,code,certification_type,level,validity_months,official_url,status,notes").order("name"),
         supabase.from("technician_certifications").select("id,certification_id,technician_id,status,expires_at,issued_at,certificate_number,verification_url"),
         supabase.from("user_profiles").select("role").maybeSingle(),
       ]);
@@ -125,6 +126,52 @@ export default function Home() {
     }
   }
 
+  function asOptionalText(value: FormDataEntryValue | null) {
+    const text = String(value ?? "").trim();
+    return text || null;
+  }
+
+  function slugify(value: string) {
+    return value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+  }
+
+  async function handleAddBrand(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const result = await getSupabaseClient().from("brands").insert({
+      name,
+      slug: slugify(name),
+      internal_owner: asOptionalText(form.get("internal_owner")),
+      notes: asOptionalText(form.get("notes")),
+      status: "active",
+    });
+    if (result.error) setMessage(result.error.message);
+    else { event.currentTarget.reset(); setMessage("Marca agregada."); await loadDashboard(); }
+  }
+
+  async function handleAddTechnician(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const result = await getSupabaseClient().from("technicians").insert({
+      full_name: String(form.get("full_name") ?? "").trim(),
+      email: asOptionalText(form.get("email")),
+      job_title: asOptionalText(form.get("job_title")),
+      area: asOptionalText(form.get("area")),
+      start_date: asOptionalText(form.get("start_date")),
+      manager_name: asOptionalText(form.get("manager_name")),
+      notes: asOptionalText(form.get("notes")),
+      status: "active",
+    });
+    if (result.error) setMessage(result.error.message);
+    else { event.currentTarget.reset(); setMessage("Técnico agregado."); await loadDashboard(); }
+  }
+
   async function handleAddCatalogCertification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -136,6 +183,118 @@ export default function Home() {
     });
     if (result.error) setMessage(result.error.message);
     else { event.currentTarget.reset(); setMessage("Certificación agregada al catálogo."); await loadDashboard(); }
+  }
+
+  async function editBrand(brand: Brand) {
+    const name = window.prompt("Nombre de la marca", brand.name);
+    if (name === null) return;
+    const cleanName = name.trim();
+    if (!cleanName) { setMessage("El nombre de la marca es obligatorio."); return; }
+    const owner = window.prompt("Responsable interno (opcional)", brand.internal_owner ?? "");
+    if (owner === null) return;
+    const notes = window.prompt("Notas (opcional)", brand.notes ?? "");
+    if (notes === null) return;
+    const status = window.prompt("Estado: active, inactive o review", brand.status);
+    if (status === null) return;
+    if (!["active", "inactive", "review"].includes(status.trim())) { setMessage("Estado de marca no válido."); return; }
+    const result = await getSupabaseClient().from("brands").update({ name: cleanName, slug: slugify(cleanName), internal_owner: owner.trim() || null, notes: notes.trim() || null, status: status.trim() }).eq("id", brand.id);
+    if (result.error) setMessage(result.error.message); else { setMessage("Marca actualizada."); await loadDashboard(); }
+  }
+
+  async function removeBrand(brand: Brand) {
+    const hasRelatedData = certifications.some((item) => item.brand_id === brand.id) || requirements.some((item) => item.brand_id === brand.id);
+    if (hasRelatedData) {
+      if (!window.confirm(`La marca ${brand.name} tiene certificaciones o requisitos asociados. Para conservar el historial se desactivará. ¿Continuar?`)) return;
+      const result = await getSupabaseClient().from("brands").update({ status: "inactive" }).eq("id", brand.id);
+      if (result.error) setMessage(result.error.message); else { setMessage("Marca desactivada; su historial se conserva."); await loadDashboard(); }
+      return;
+    }
+    if (!window.confirm(`¿Eliminar definitivamente la marca ${brand.name}?`)) return;
+    const result = await getSupabaseClient().from("brands").delete().eq("id", brand.id);
+    if (result.error) setMessage(result.error.message); else { setMessage("Marca eliminada."); await loadDashboard(); }
+  }
+
+  async function editTechnician(technician: Technician) {
+    const fullName = window.prompt("Nombre completo", technician.full_name);
+    if (fullName === null) return;
+    const cleanName = fullName.trim();
+    if (!cleanName) { setMessage("El nombre del técnico es obligatorio."); return; }
+    const email = window.prompt("Correo (opcional)", technician.email ?? "");
+    if (email === null) return;
+    const jobTitle = window.prompt("Cargo (opcional)", technician.job_title ?? "");
+    if (jobTitle === null) return;
+    const area = window.prompt("Área (opcional)", technician.area ?? "");
+    if (area === null) return;
+    const startDate = window.prompt("Fecha de ingreso (AAAA-MM-DD, opcional)", technician.start_date ?? "");
+    if (startDate === null) return;
+    const managerName = window.prompt("Responsable (opcional)", technician.manager_name ?? "");
+    if (managerName === null) return;
+    const notes = window.prompt("Notas (opcional)", technician.notes ?? "");
+    if (notes === null) return;
+    const status = window.prompt("Estado: active, inactive o leave", technician.status);
+    if (status === null) return;
+    if (!["active", "inactive", "leave"].includes(status.trim())) { setMessage("Estado de técnico no válido."); return; }
+    const result = await getSupabaseClient().from("technicians").update({ full_name: cleanName, email: email.trim() || null, job_title: jobTitle.trim() || null, area: area.trim() || null, start_date: startDate.trim() || null, manager_name: managerName.trim() || null, notes: notes.trim() || null, status: status.trim() }).eq("id", technician.id);
+    if (result.error) setMessage(result.error.message); else { setMessage("Técnico actualizado."); await loadDashboard(); }
+  }
+
+  async function removeTechnician(technician: Technician) {
+    const assignments = records.filter((record) => record.technician_id === technician.id).length;
+    if (assignments > 0) {
+      if (!window.confirm(`${technician.full_name} tiene ${assignments} certificación(es) asignada(s). Para conservar el historial se desactivará. ¿Continuar?`)) return;
+      const result = await getSupabaseClient().from("technicians").update({ status: "inactive" }).eq("id", technician.id);
+      if (result.error) setMessage(result.error.message); else { setMessage("Técnico desactivado; sus certificaciones se conservan."); await loadDashboard(); }
+      return;
+    }
+    if (!window.confirm(`¿Eliminar definitivamente a ${technician.full_name}?`)) return;
+    const result = await getSupabaseClient().from("technicians").delete().eq("id", technician.id);
+    if (result.error) setMessage(result.error.message); else { setMessage("Técnico eliminado."); await loadDashboard(); }
+  }
+
+  async function editCatalogCertification(certification: Certification) {
+    const currentBrand = brandNameById.get(certification.brand_id) ?? "";
+    const brandName = window.prompt("Marca", currentBrand);
+    if (brandName === null) return;
+    const brand = brands.find((item) => item.name.toLocaleLowerCase() === brandName.trim().toLocaleLowerCase());
+    if (!brand) { setMessage("No se encontró esa marca."); return; }
+    const name = window.prompt("Nombre de la certificación", certification.name);
+    if (name === null) return;
+    const cleanName = name.trim();
+    if (!cleanName) { setMessage("El nombre de la certificación es obligatorio."); return; }
+    const code = window.prompt("Código (opcional)", certification.code ?? "");
+    if (code === null) return;
+    const certificationType = window.prompt("Tipo: technical, sales, presales, implementation, support, architecture u other", certification.certification_type);
+    if (certificationType === null) return;
+    if (!["technical", "sales", "presales", "implementation", "support", "architecture", "other"].includes(certificationType.trim())) { setMessage("Tipo de certificación no válido."); return; }
+    const level = window.prompt("Nivel (opcional)", certification.level ?? "");
+    if (level === null) return;
+    const validity = window.prompt("Vigencia en meses (opcional)", certification.validity_months?.toString() ?? "");
+    if (validity === null) return;
+    const validityMonths = validity.trim() ? Number(validity) : null;
+    if (validityMonths !== null && (!Number.isInteger(validityMonths) || validityMonths < 1)) { setMessage("La vigencia debe ser un número entero positivo."); return; }
+    const officialUrl = window.prompt("URL oficial (opcional)", certification.official_url ?? "");
+    if (officialUrl === null) return;
+    const notes = window.prompt("Notas (opcional)", certification.notes ?? "");
+    if (notes === null) return;
+    const status = window.prompt("Estado: active, inactive o retired", certification.status);
+    if (status === null) return;
+    if (!["active", "inactive", "retired"].includes(status.trim())) { setMessage("Estado de certificación no válido."); return; }
+    const result = await getSupabaseClient().from("certification_catalog").update({ brand_id: brand.id, name: cleanName, code: code.trim() || null, certification_type: certificationType.trim(), level: level.trim() || null, validity_months: validityMonths, official_url: officialUrl.trim() || null, notes: notes.trim() || null, status: status.trim() }).eq("id", certification.id);
+    if (result.error) setMessage(result.error.message); else { setMessage("Certificación actualizada."); await loadDashboard(); }
+  }
+
+  async function removeCatalogCertification(certification: Certification) {
+    const assignments = records.filter((record) => record.certification_id === certification.id).length;
+    const requirementCount = requirements.filter((requirement) => requirement.certification_id === certification.id).length;
+    if (assignments > 0 || requirementCount > 0) {
+      if (!window.confirm(`${certification.name} tiene datos asociados. Para conservar el historial se retirará del catálogo. ¿Continuar?`)) return;
+      const result = await getSupabaseClient().from("certification_catalog").update({ status: "retired" }).eq("id", certification.id);
+      if (result.error) setMessage(result.error.message); else { setMessage("Certificación retirada; su historial se conserva."); await loadDashboard(); }
+      return;
+    }
+    if (!window.confirm(`¿Eliminar definitivamente la certificación ${certification.name}?`)) return;
+    const result = await getSupabaseClient().from("certification_catalog").delete().eq("id", certification.id);
+    if (result.error) setMessage(result.error.message); else { setMessage("Certificación eliminada."); await loadDashboard(); }
   }
 
   async function handleAddRequirement(event: FormEvent<HTMLFormElement>) {
@@ -176,6 +335,37 @@ export default function Home() {
     if (result.error) setMessage(result.error.message); else { setMessage("Requisito actualizado."); await loadDashboard(); }
   }
 
+  async function editFullRequirement(requirement: Requirement) {
+    const currentBrand = brandNameById.get(requirement.brand_id) ?? "";
+    const brandName = window.prompt("Marca", currentBrand);
+    if (brandName === null) return;
+    const brand = brands.find((item) => item.name.toLocaleLowerCase() === brandName.trim().toLocaleLowerCase());
+    if (!brand) { setMessage("No se encontró esa marca."); return; }
+    const currentCertification = certificationById.get(requirement.certification_id)?.name ?? "";
+    const certificationName = window.prompt("Certificación", currentCertification);
+    if (certificationName === null) return;
+    const certification = certifications.find((item) => item.brand_id === brand.id && item.name.toLocaleLowerCase() === certificationName.trim().toLocaleLowerCase());
+    if (!certification) { setMessage("La certificación no pertenece a esa marca."); return; }
+    const value = window.prompt("Cantidad de técnicos requerida", String(requirement.required_count));
+    if (value === null) return;
+    const count = Number(value);
+    if (!Number.isInteger(count) || count < 1) { setMessage("La cantidad debe ser un entero mayor que cero."); return; }
+    const distinctPeople = window.prompt("¿Deben ser técnicos distintos? (sí/no)", requirement.distinct_people_required ? "sí" : "no");
+    if (distinctPeople === null) return;
+    if (!["sí", "si", "no"].includes(distinctPeople.trim().toLocaleLowerCase())) { setMessage("Escribe sí o no."); return; }
+    const mandatory = window.prompt("¿Es obligatorio? (sí/no)", requirement.mandatory ? "sí" : "no");
+    if (mandatory === null) return;
+    if (!["sí", "si", "no"].includes(mandatory.trim().toLocaleLowerCase())) { setMessage("Escribe sí o no."); return; }
+    const effectiveFrom = window.prompt("Vigente desde (AAAA-MM-DD, opcional)", requirement.effective_from ?? "");
+    if (effectiveFrom === null) return;
+    const effectiveUntil = window.prompt("Vigente hasta (AAAA-MM-DD, opcional)", requirement.effective_until ?? "");
+    if (effectiveUntil === null) return;
+    const notes = window.prompt("Notas (opcional)", requirement.notes ?? "");
+    if (notes === null) return;
+    const result = await getSupabaseClient().from("brand_requirements").update({ brand_id: brand.id, certification_id: certification.id, required_count: count, distinct_people_required: ["sí", "si"].includes(distinctPeople.trim().toLocaleLowerCase()), mandatory: ["sí", "si"].includes(mandatory.trim().toLocaleLowerCase()), effective_from: effectiveFrom.trim() || null, effective_until: effectiveUntil.trim() || null, notes: notes.trim() || null }).eq("id", requirement.id);
+    if (result.error) setMessage(result.error.message); else { setMessage("Requisito actualizado."); await loadDashboard(); }
+  }
+
   async function deleteRequirement(requirement: Requirement) {
     if (!window.confirm("¿Eliminar este requisito?")) return;
     const result = await getSupabaseClient().from("brand_requirements").delete().eq("id", requirement.id);
@@ -209,7 +399,7 @@ export default function Home() {
       }, 0);
       const compliance = required === 0 ? 0 : Math.round((covered / required) * 100);
       const status: BrandSummary["status"] = compliance === 100 ? "Cumplido" : compliance > 0 ? "En riesgo" : "Pendiente";
-      return { id: brand.id, name: brand.name, required, covered, compliance, status };
+      return { id: brand.id, name: brand.name, internal_owner: brand.internal_owner, required, covered, compliance, status };
     });
   }, [brands, requirements, records]);
 
@@ -234,6 +424,10 @@ export default function Home() {
   const visibleRequirements = requirements.filter((requirement) => {
     const brandName = brandNameById.get(requirement.brand_id) ?? requirement.brand_id;
     return `${brandName} ${requirement.certification_id}`.toLocaleLowerCase().includes(normalizedQuery);
+  });
+  const visibleCatalog = certifications.filter((certification) => {
+    const brandName = brandNameById.get(certification.brand_id) ?? certification.brand_id;
+    return `${brandName} ${certification.name} ${certification.code ?? ""} ${certification.status}`.toLocaleLowerCase().includes(normalizedQuery);
   });
   const visibleRecords = records.filter((record) => {
     const technicianName = technicianNameById.get(record.technician_id) ?? record.technician_id;
@@ -322,6 +516,8 @@ export default function Home() {
             <details><summary>Nueva certificación</summary><form onSubmit={handleAddCatalogCertification} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><input name="name" placeholder="Nombre de certificación" required /><input name="code" placeholder="Código (opcional)" /><button>Guardar</button></form></details>
             <details><summary>Nuevo requisito</summary><form onSubmit={handleAddRequirement} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><select name="certification_id" required><option value="">Certificación</option>{certifications.filter((certification) => certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select><input name="required_count" type="number" min="1" defaultValue="1" required /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar</button></form></details>
             <details><summary>Asignar a técnico</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><select name="technician_id" required><option value="">Técnico</option>{technicians.map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><select name="certification_id" required><option value="">Certificación</option>{certifications.filter((certification) => certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select><input name="issued_at" type="date" title="Fecha de emisión" /><input name="expires_at" type="date" title="Fecha de vencimiento" /><input name="certificate_number" placeholder="N.º de certificado" /><input name="verification_url" type="url" placeholder="Enlace de evidencia" /><select name="status" defaultValue="active"><option value="active">Vigente</option><option value="expiring">Por vencer</option><option value="pending_validation">Pendiente de validar</option></select><button>Guardar</button></form></details>
+            <details><summary>Nueva marca</summary><form onSubmit={handleAddBrand} className="inline-form"><input name="name" placeholder="Nombre de la marca" required /><input name="internal_owner" placeholder="Responsable interno" /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar</button></form></details>
+            <details><summary>Nuevo técnico</summary><form onSubmit={handleAddTechnician} className="inline-form"><input name="full_name" placeholder="Nombre completo" required /><input name="email" type="email" placeholder="Correo (opcional)" /><input name="job_title" placeholder="Cargo (opcional)" /><input name="area" placeholder="Área (opcional)" /><input name="start_date" type="date" title="Fecha de ingreso" /><input name="manager_name" placeholder="Responsable (opcional)" /><button>Guardar</button></form></details>
           </div>
         </section>}
 
@@ -370,9 +566,9 @@ export default function Home() {
         {activeSection === "brands" && <section className="panel data-panel">
           <div className="panel-heading"><div><span className="kicker">CATÁLOGO</span><h2>Marcas</h2></div><span className="result-count">{visibleBrandSummaries.length} resultados</span></div>
           <div className="table-list">
-            {visibleBrandSummaries.map((brand) => <button className="table-row" key={brand.id} onClick={() => showSection("requirements", { query: brand.name })}>
-              <div className="brand-logo">{brand.name.slice(0, 2).toUpperCase()}</div><div><strong>{brand.name}</strong><span>ID: {brand.id}</span></div><span className={`status ${brand.status.toLowerCase().replace(" ", "-")}`}>{brand.status}</span><span>{brand.covered} de {brand.required} cupos</span><ChevronRight size={18}/>
-            </button>)}
+            {visibleBrandSummaries.map((brand) => <article className="table-row" key={brand.id}>
+              <div className="brand-logo">{brand.name.slice(0, 2).toUpperCase()}</div><div><strong>{brand.name}</strong><span>{brand.internal_owner ?? "Sin responsable"}</span></div><span className={`status ${brand.status.toLowerCase().replace(" ", "-")}`}>{brand.status}</span><span>{brand.covered} de {brand.required} cupos</span>{canManage ? <div className="row-actions"><button onClick={() => editBrand(brands.find((item) => item.id === brand.id)!)}>Editar</button><button onClick={() => removeBrand(brands.find((item) => item.id === brand.id)!)}>Eliminar</button></div> : <button className="text-button" onClick={() => showSection("requirements", { query: brand.name })}>Ver requisitos</button>}
+            </article>)}
             {visibleBrandSummaries.length === 0 && <p className="empty-state">No hay marcas que coincidan con la búsqueda.</p>}
           </div>
         </section>}
@@ -380,9 +576,9 @@ export default function Home() {
         {activeSection === "technicians" && <section className="panel data-panel">
           <div className="panel-heading"><div><span className="kicker">EQUIPO</span><h2>Técnicos</h2></div><span className="result-count">{visibleTechnicians.length} resultados</span></div>
           <div className="table-list">
-            {visibleTechnicians.map((technician) => <button className="table-row" key={technician.id} onClick={() => showSection("certifications", { query: technician.full_name })}>
-              <div className="brand-logo">{technician.full_name.slice(0, 2).toUpperCase()}</div><div><strong>{technician.full_name}</strong><span>ID: {technician.id}</span></div><span className={`status ${technician.status === "active" ? "cumplido" : "pendiente"}`}>{technician.status}</span><span>Ver certificaciones</span><ChevronRight size={18}/>
-            </button>)}
+            {visibleTechnicians.map((technician) => <article className="table-row" key={technician.id}>
+              <div className="brand-logo">{technician.full_name.slice(0, 2).toUpperCase()}</div><div><strong>{technician.full_name}</strong><span>{technician.email ?? technician.job_title ?? "Sin datos de contacto"}</span></div><span className={`status ${technician.status === "active" ? "cumplido" : "pendiente"}`}>{technician.status}</span><span>{technician.area ?? "Sin área"}</span>{canManage ? <div className="row-actions"><button onClick={() => editTechnician(technician)}>Editar</button><button onClick={() => removeTechnician(technician)}>Eliminar</button></div> : <button className="text-button" onClick={() => showSection("certifications", { query: technician.full_name })}>Ver certificados</button>}
+            </article>)}
             {visibleTechnicians.length === 0 && <p className="empty-state">No hay técnicos que coincidan con la búsqueda.</p>}
           </div>
         </section>}
@@ -390,6 +586,14 @@ export default function Home() {
         {activeSection === "certifications" && <section className="panel data-panel">
           <div className="panel-heading"><div><span className="kicker">VIGENCIAS</span><h2>{showExpiringOnly ? "Próximos vencimientos" : "Certificaciones"}</h2></div><button className="text-button" onClick={() => { setShowExpiringOnly(false); setSearchQuery(""); }}>Limpiar filtros</button></div>
           <div className="table-list">
+            {canManage && <>
+              <div className="panel-heading"><span className="kicker">CATÁLOGO ADMINISTRABLE</span><strong>{visibleCatalog.length} certificaciones</strong></div>
+              {visibleCatalog.map((certification) => <article className="table-row catalog-row" key={certification.id}>
+                <div className="brand-logo"><Award size={18}/></div><div><strong>{certification.name}</strong><span>{brandNameById.get(certification.brand_id) ?? "Marca sin identificar"} · {certification.code ?? "Sin código"}</span></div><span className={`status ${certification.status === "active" ? "cumplido" : "pendiente"}`}>{certification.status}</span><span>{certification.validity_months ? `${certification.validity_months} meses de vigencia` : certification.level ?? "Sin vigencia definida"}</span><div className="row-actions"><button onClick={() => editCatalogCertification(certification)}>Editar</button><button onClick={() => removeCatalogCertification(certification)}>Eliminar</button></div>
+              </article>)}
+              {visibleCatalog.length === 0 && <p className="empty-state">No hay certificaciones de catálogo que coincidan con la búsqueda.</p>}
+              <div className="panel-heading"><span className="kicker">ASIGNACIONES</span><strong>{visibleRecords.length} certificaciones de técnicos</strong></div>
+            </>}
             {visibleRecords.map((record) => <article className="table-row" key={record.id}>
               <div className="brand-logo"><Award size={18}/></div><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>{certificationById.get(record.certification_id)?.name ?? record.certification_id}</span></div><span className={`status ${record.status === "active" ? "cumplido" : "pendiente"}`}>{record.status}</span><span>Vence: {formatDate(record.expires_at)}</span>{canManage ? <div className="row-actions"><button onClick={() => editTechnicianCertification(record)}>Editar</button><button onClick={() => deleteTechnicianCertification(record)}>Eliminar</button></div> : <span />}
             </article>)}
@@ -401,7 +605,7 @@ export default function Home() {
           <div className="panel-heading"><div><span className="kicker">COBERTURA</span><h2>Requisitos</h2></div><button className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button></div>
           <div className="table-list">
             {visibleRequirements.map((requirement) => <article className="table-row" key={requirement.id}>
-              <div className="brand-logo"><FileCheck2 size={18}/></div><div><strong>{brandNameById.get(requirement.brand_id) ?? "Marca sin identificar"}</strong><span>{certificationById.get(requirement.certification_id)?.name ?? requirement.certification_id}</span></div><span>{requirement.required_count} cupos requeridos</span><span>{new Set(records.filter((record) => record.certification_id === requirement.certification_id && record.status === "active").map((record) => record.technician_id)).size} cubiertos</span>{canManage ? <div className="row-actions"><button onClick={() => editRequirement(requirement)}>Editar</button><button onClick={() => deleteRequirement(requirement)}>Eliminar</button></div> : <span />}
+              <div className="brand-logo"><FileCheck2 size={18}/></div><div><strong>{brandNameById.get(requirement.brand_id) ?? "Marca sin identificar"}</strong><span>{certificationById.get(requirement.certification_id)?.name ?? requirement.certification_id}</span></div><span>{requirement.required_count} cupos requeridos</span><span>{new Set(records.filter((record) => record.certification_id === requirement.certification_id && record.status === "active").map((record) => record.technician_id)).size} cubiertos</span>{canManage ? <div className="row-actions"><button onClick={() => editFullRequirement(requirement)}>Editar</button><button onClick={() => deleteRequirement(requirement)}>Eliminar</button></div> : <span />}
             </article>)}
             {visibleRequirements.length === 0 && <p className="empty-state">No hay requisitos que coincidan con la búsqueda.</p>}
           </div>
