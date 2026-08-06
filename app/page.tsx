@@ -42,6 +42,11 @@ export default function Home() {
   const [selectedCertificationId, setSelectedCertificationId] = useState<string | null>(null);
   const [selectedRequirementId, setSelectedRequirementId] = useState<string | null>(null);
   const [draggedBrandId, setDraggedBrandId] = useState<string | null>(null);
+  const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
+  const [editingTechnician, setEditingTechnician] = useState<Technician | null>(null);
+  const [editingCatalogCertification, setEditingCatalogCertification] = useState<Certification | null>(null);
+  const [editingRequirement, setEditingRequirement] = useState<Requirement | null>(null);
+  const [editingCertificationRecord, setEditingCertificationRecord] = useState<CertificationRecord | null>(null);
 
   useEffect(() => {
     let supabase;
@@ -259,19 +264,7 @@ export default function Home() {
   }
 
   async function editBrand(brand: Brand) {
-    const name = window.prompt("Nombre de la marca", brand.name);
-    if (name === null) return;
-    const cleanName = name.trim();
-    if (!cleanName) { setMessage("El nombre de la marca es obligatorio."); return; }
-    const owner = window.prompt("Responsable interno (opcional)", brand.internal_owner ?? "");
-    if (owner === null) return;
-    const notes = window.prompt("Notas (opcional)", brand.notes ?? "");
-    if (notes === null) return;
-    const status = window.prompt("Estado: active, inactive o review", brand.status);
-    if (status === null) return;
-    if (!["active", "inactive", "review"].includes(status.trim())) { setMessage("Estado de marca no válido."); return; }
-    const result = await getSupabaseClient().from("brands").update({ name: cleanName, slug: slugify(cleanName), internal_owner: owner.trim() || null, notes: notes.trim() || null, status: status.trim() }).eq("id", brand.id);
-    if (result.error) setMessage(result.error.message); else { setMessage("Marca actualizada."); await loadDashboard(); }
+    setEditingBrand(brand);
   }
 
   async function removeBrand(brand: Brand) {
@@ -288,27 +281,7 @@ export default function Home() {
   }
 
   async function editTechnician(technician: Technician) {
-    const fullName = window.prompt("Nombre completo", technician.full_name);
-    if (fullName === null) return;
-    const cleanName = fullName.trim();
-    if (!cleanName) { setMessage("El nombre del técnico es obligatorio."); return; }
-    const email = window.prompt("Correo (opcional)", technician.email ?? "");
-    if (email === null) return;
-    const jobTitle = window.prompt("Cargo (opcional)", technician.job_title ?? "");
-    if (jobTitle === null) return;
-    const area = window.prompt("Área (opcional)", technician.area ?? "");
-    if (area === null) return;
-    const startDate = window.prompt("Fecha de ingreso (AAAA-MM-DD, opcional)", technician.start_date ?? "");
-    if (startDate === null) return;
-    const managerName = window.prompt("Responsable (opcional)", technician.manager_name ?? "");
-    if (managerName === null) return;
-    const notes = window.prompt("Notas (opcional)", technician.notes ?? "");
-    if (notes === null) return;
-    const status = window.prompt("Estado: active, inactive o leave", technician.status);
-    if (status === null) return;
-    if (!["active", "inactive", "leave"].includes(status.trim())) { setMessage("Estado de técnico no válido."); return; }
-    const result = await getSupabaseClient().from("technicians").update({ full_name: cleanName, email: email.trim() || null, job_title: jobTitle.trim() || null, area: area.trim() || null, start_date: startDate.trim() || null, manager_name: managerName.trim() || null, notes: notes.trim() || null, status: status.trim() }).eq("id", technician.id);
-    if (result.error) setMessage(result.error.message); else { setMessage("Técnico actualizado."); await loadDashboard(); }
+    setEditingTechnician(technician);
   }
 
   async function removeTechnician(technician: Technician) {
@@ -325,35 +298,7 @@ export default function Home() {
   }
 
   async function editCatalogCertification(certification: Certification) {
-    const currentBrand = brandNameById.get(certification.brand_id) ?? "";
-    const brandName = window.prompt("Marca", currentBrand);
-    if (brandName === null) return;
-    const brand = brands.find((item) => item.name.toLocaleLowerCase() === brandName.trim().toLocaleLowerCase());
-    if (!brand) { setMessage("No se encontró esa marca."); return; }
-    const name = window.prompt("Nombre de la certificación", certification.name);
-    if (name === null) return;
-    const cleanName = name.trim();
-    if (!cleanName) { setMessage("El nombre de la certificación es obligatorio."); return; }
-    const code = window.prompt("Código (opcional)", certification.code ?? "");
-    if (code === null) return;
-    const certificationType = window.prompt("Tipo: technical, sales, presales, implementation, support, architecture u other", certification.certification_type);
-    if (certificationType === null) return;
-    if (!["technical", "sales", "presales", "implementation", "support", "architecture", "other"].includes(certificationType.trim())) { setMessage("Tipo de certificación no válido."); return; }
-    const level = window.prompt("Nivel (opcional)", certification.level ?? "");
-    if (level === null) return;
-    const validity = window.prompt("Vigencia en meses (opcional)", certification.validity_months?.toString() ?? "");
-    if (validity === null) return;
-    const validityMonths = validity.trim() ? Number(validity) : null;
-    if (validityMonths !== null && (!Number.isInteger(validityMonths) || validityMonths < 1)) { setMessage("La vigencia debe ser un número entero positivo."); return; }
-    const officialUrl = window.prompt("URL oficial (opcional)", certification.official_url ?? "");
-    if (officialUrl === null) return;
-    const notes = window.prompt("Notas (opcional)", certification.notes ?? "");
-    if (notes === null) return;
-    const status = window.prompt("Estado: active, inactive o retired", certification.status);
-    if (status === null) return;
-    if (!["active", "inactive", "retired"].includes(status.trim())) { setMessage("Estado de certificación no válido."); return; }
-    const result = await getSupabaseClient().from("certification_catalog").update({ brand_id: brand.id, name: cleanName, code: code.trim() || null, certification_type: certificationType.trim(), level: level.trim() || null, validity_months: validityMonths, official_url: officialUrl.trim() || null, notes: notes.trim() || null, status: status.trim() }).eq("id", certification.id);
-    if (result.error) setMessage(result.error.message); else { setMessage("Certificación actualizada."); await loadDashboard(); }
+    setEditingCatalogCertification(certification);
   }
 
   async function removeCatalogCertification(certification: Certification) {
@@ -457,34 +402,7 @@ export default function Home() {
   }
 
   async function editFullRequirement(requirement: Requirement) {
-    const currentBrand = brandNameById.get(requirement.brand_id) ?? "";
-    const brandName = window.prompt("Marca", currentBrand);
-    if (brandName === null) return;
-    const brand = brands.find((item) => item.name.toLocaleLowerCase() === brandName.trim().toLocaleLowerCase());
-    if (!brand) { setMessage("No se encontró esa marca."); return; }
-    const currentCertification = certificationById.get(requirement.certification_id)?.name ?? "";
-    const certificationName = window.prompt("Certificación", currentCertification);
-    if (certificationName === null) return;
-    const certification = certifications.find((item) => item.brand_id === brand.id && item.name.toLocaleLowerCase() === certificationName.trim().toLocaleLowerCase());
-    if (!certification) { setMessage("La certificación no pertenece a esa marca."); return; }
-    const value = window.prompt("Cantidad de técnicos requerida", String(requirement.required_count));
-    if (value === null) return;
-    const count = Number(value);
-    if (!Number.isInteger(count) || count < 1) { setMessage("La cantidad debe ser un entero mayor que cero."); return; }
-    const distinctPeople = window.prompt("¿Deben ser técnicos distintos? (sí/no)", requirement.distinct_people_required ? "sí" : "no");
-    if (distinctPeople === null) return;
-    if (!["sí", "si", "no"].includes(distinctPeople.trim().toLocaleLowerCase())) { setMessage("Escribe sí o no."); return; }
-    const mandatory = window.prompt("¿Es obligatorio? (sí/no)", requirement.mandatory ? "sí" : "no");
-    if (mandatory === null) return;
-    if (!["sí", "si", "no"].includes(mandatory.trim().toLocaleLowerCase())) { setMessage("Escribe sí o no."); return; }
-    const effectiveFrom = window.prompt("Vigente desde (AAAA-MM-DD, opcional)", requirement.effective_from ?? "");
-    if (effectiveFrom === null) return;
-    const effectiveUntil = window.prompt("Vigente hasta (AAAA-MM-DD, opcional)", requirement.effective_until ?? "");
-    if (effectiveUntil === null) return;
-    const notes = window.prompt("Notas (opcional)", requirement.notes ?? "");
-    if (notes === null) return;
-    const result = await getSupabaseClient().from("brand_requirements").update({ brand_id: brand.id, certification_id: certification.id, required_count: count, distinct_people_required: ["sí", "si"].includes(distinctPeople.trim().toLocaleLowerCase()), mandatory: ["sí", "si"].includes(mandatory.trim().toLocaleLowerCase()), effective_from: effectiveFrom.trim() || null, effective_until: effectiveUntil.trim() || null, notes: notes.trim() || null }).eq("id", requirement.id);
-    if (result.error) setMessage(result.error.message); else { setMessage("Requisito actualizado."); await loadDashboard(); }
+    setEditingRequirement(requirement);
   }
 
   async function deleteRequirement(requirement: Requirement) {
@@ -494,12 +412,81 @@ export default function Home() {
   }
 
   async function editTechnicianCertification(record: CertificationRecord) {
-    const expiry = window.prompt("Fecha de vencimiento (AAAA-MM-DD; déjalo vacío si no aplica)", record.expires_at ?? "");
-    if (expiry === null) return;
-    const notes = window.prompt("Observación o información extra (opcional)", record.notes ?? "");
-    if (notes === null) return;
-    const result = await getSupabaseClient().from("technician_certifications").update({ expires_at: expiry.trim() || null, notes: notes.trim() || null }).eq("id", record.id);
-    if (result.error) setMessage(result.error.message); else { setMessage("Certificación actualizada."); await loadDashboard(); }
+    setEditingCertificationRecord(record);
+  }
+
+  async function handleUpdateBrand(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingBrand) return;
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    if (!name) { setMessage("El nombre de la marca es obligatorio."); return; }
+    const result = await getSupabaseClient().from("brands").update({ name, slug: slugify(name), internal_owner: asOptionalText(form.get("internal_owner")), notes: asOptionalText(form.get("notes")), status: String(form.get("status")) }).eq("id", editingBrand.id);
+    if (result.error) setMessage(result.error.message); else { setEditingBrand(null); setMessage("Marca actualizada."); await loadDashboard(); }
+  }
+
+  async function handleUpdateTechnician(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingTechnician) return;
+    const form = new FormData(event.currentTarget);
+    const fullName = String(form.get("full_name") ?? "").trim();
+    if (!fullName) { setMessage("El nombre del técnico es obligatorio."); return; }
+    const result = await getSupabaseClient().from("technicians").update({ full_name: fullName, email: asOptionalText(form.get("email")), job_title: asOptionalText(form.get("job_title")), area: asOptionalText(form.get("area")), start_date: asOptionalText(form.get("start_date")), manager_name: asOptionalText(form.get("manager_name")), notes: asOptionalText(form.get("notes")), status: String(form.get("status")) }).eq("id", editingTechnician.id);
+    if (result.error) setMessage(result.error.message); else { setEditingTechnician(null); setMessage("Técnico actualizado."); await loadDashboard(); }
+  }
+
+  async function handleUpdateCatalogCertification(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingCatalogCertification) return;
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const validityValue = String(form.get("validity_months") ?? "").trim();
+    const validityMonths = validityValue ? Number(validityValue) : null;
+    if (!name || (validityMonths !== null && (!Number.isInteger(validityMonths) || validityMonths < 1))) { setMessage("Revisa el nombre y la vigencia de la certificación."); return; }
+    const result = await getSupabaseClient().from("certification_catalog").update({ brand_id: String(form.get("brand_id")), name, code: asOptionalText(form.get("code")), certification_type: String(form.get("certification_type")), level: asOptionalText(form.get("level")), validity_months: validityMonths, official_url: asOptionalText(form.get("official_url")), notes: asOptionalText(form.get("notes")), status: String(form.get("status")) }).eq("id", editingCatalogCertification.id);
+    if (result.error) setMessage(result.error.message); else { setEditingCatalogCertification(null); setMessage("Certificación actualizada."); await loadDashboard(); }
+  }
+
+  async function handleUpdateRequirement(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingRequirement) return;
+    const form = new FormData(event.currentTarget);
+    const brandId = String(form.get("brand_id"));
+    const certificationName = String(form.get("certification_name") ?? "").trim();
+    const requiredCount = Number(form.get("required_count"));
+    const certification = certifications.find((item) => item.brand_id === brandId && item.name.toLocaleLowerCase() === certificationName.toLocaleLowerCase());
+    if (!certification || !Number.isInteger(requiredCount) || requiredCount < 1) { setMessage("Indica una certificación válida de la marca y una cantidad correcta."); return; }
+    const result = await getSupabaseClient().from("brand_requirements").update({ brand_id: brandId, certification_id: certification.id, required_count: requiredCount, distinct_people_required: form.get("distinct_people_required") === "on", mandatory: form.get("mandatory") === "on", effective_from: asOptionalText(form.get("effective_from")), effective_until: asOptionalText(form.get("effective_until")), notes: asOptionalText(form.get("notes")) }).eq("id", editingRequirement.id);
+    if (result.error) setMessage(result.error.message); else { setEditingRequirement(null); setMessage("Requisito actualizado."); await loadDashboard(); }
+  }
+
+  async function handleUpdateCertificationRecord(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingCertificationRecord) return;
+    const form = new FormData(event.currentTarget);
+    const technicianId = String(form.get("technician_id"));
+    const certificationId = String(form.get("certification_id"));
+    const supabase = getSupabaseClient();
+    const evidenceFile = form.get("certificate_file");
+    let evidencePath = editingCertificationRecord.evidence_path;
+    let uploadedPath: string | null = null;
+    if (evidenceFile instanceof File && evidenceFile.size > 0) {
+      const isPdf = evidenceFile.type === "application/pdf" || evidenceFile.name.toLocaleLowerCase().endsWith(".pdf");
+      if (!isPdf || evidenceFile.size > 10485760) { setMessage("Adjunta un PDF de hasta 10 MB."); return; }
+      const safeName = evidenceFile.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+      const upload = await supabase.storage.from("certificate-files").upload(`${certificationId}/${technicianId}/${crypto.randomUUID()}-${safeName}`, evidenceFile, { contentType: "application/pdf", upsert: false });
+      if (upload.error) { setMessage(upload.error.message); return; }
+      uploadedPath = upload.data.path;
+      evidencePath = uploadedPath;
+    }
+    const result = await supabase.from("technician_certifications").update({ technician_id: technicianId, certification_id: certificationId, issued_at: asOptionalText(form.get("issued_at")), expires_at: asOptionalText(form.get("expires_at")), certificate_number: asOptionalText(form.get("certificate_number")), verification_url: asOptionalText(form.get("verification_url")), notes: asOptionalText(form.get("notes")), status: String(form.get("status")), evidence_path: evidencePath }).eq("id", editingCertificationRecord.id);
+    if (result.error) {
+      if (uploadedPath) await supabase.storage.from("certificate-files").remove([uploadedPath]);
+      setMessage(result.error.message);
+    } else {
+      if (uploadedPath && editingCertificationRecord.evidence_path) await supabase.storage.from("certificate-files").remove([editingCertificationRecord.evidence_path]);
+      setEditingCertificationRecord(null); setMessage("Certificación actualizada."); await loadDashboard();
+    }
   }
 
   async function deleteTechnicianCertification(record: CertificationRecord) {
@@ -810,6 +797,16 @@ export default function Home() {
           {canManage && <div className="modal-section modal-form-section"><details><summary>Registrar certificación completada</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><input type="hidden" name="certification_id" value={selectedCertification.id} /><input type="hidden" name="status" value="active" /><select name="technician_id" required><option value="">Técnico certificado</option>{technicians.filter((technician) => technician.status === "active").map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><input name="issued_at" type="date" title="Fecha de emisión" required /><input name="expires_at" type="date" title="Fecha de vencimiento" /><input name="certificate_number" placeholder="N.º de certificado" /><input name="notes" placeholder="Observación o información extra" /><input name="certificate_file" type="file" accept="application/pdf" title="PDF del certificado" /><button>Registrar completada</button></form></details></div>}
         </section>
       </div>}
+
+      {editingBrand && <div className="modal-backdrop edit-modal-backdrop" role="presentation" onMouseDown={() => setEditingBrand(null)}><section className="entity-modal edit-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><div className="modal-heading"><div><span className="kicker">EDITAR MARCA</span><h2>{editingBrand.name}</h2></div><button className="modal-close" onClick={() => setEditingBrand(null)}>Cancelar</button></div><form onSubmit={handleUpdateBrand} className="edit-form"><label>Nombre<input name="name" defaultValue={editingBrand.name} required /></label><label>Responsable interno<input name="internal_owner" defaultValue={editingBrand.internal_owner ?? ""} /></label><label>Estado<select name="status" defaultValue={editingBrand.status}><option value="active">Activa</option><option value="inactive">Inactiva</option><option value="review">En revisión</option></select></label><label className="form-wide">Notas<textarea name="notes" defaultValue={editingBrand.notes ?? ""} /></label><button>Guardar cambios</button></form></section></div>}
+
+      {editingTechnician && <div className="modal-backdrop edit-modal-backdrop" role="presentation" onMouseDown={() => setEditingTechnician(null)}><section className="entity-modal edit-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><div className="modal-heading"><div><span className="kicker">EDITAR TÉCNICO</span><h2>{editingTechnician.full_name}</h2></div><button className="modal-close" onClick={() => setEditingTechnician(null)}>Cancelar</button></div><form onSubmit={handleUpdateTechnician} className="edit-form"><label>Nombre completo<input name="full_name" defaultValue={editingTechnician.full_name} required /></label><label>Correo<input name="email" type="email" defaultValue={editingTechnician.email ?? ""} /></label><label>Cargo<input name="job_title" defaultValue={editingTechnician.job_title ?? ""} /></label><label>Área<input name="area" defaultValue={editingTechnician.area ?? ""} /></label><label>Fecha de ingreso<input name="start_date" type="date" defaultValue={editingTechnician.start_date ?? ""} /></label><label>Responsable<input name="manager_name" defaultValue={editingTechnician.manager_name ?? ""} /></label><label>Estado<select name="status" defaultValue={editingTechnician.status}><option value="active">Activo</option><option value="inactive">Inactivo</option><option value="leave">Ausente</option></select></label><label className="form-wide">Notas<textarea name="notes" defaultValue={editingTechnician.notes ?? ""} /></label><button>Guardar cambios</button></form></section></div>}
+
+      {editingCatalogCertification && <div className="modal-backdrop edit-modal-backdrop" role="presentation" onMouseDown={() => setEditingCatalogCertification(null)}><section className="entity-modal edit-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><div className="modal-heading"><div><span className="kicker">EDITAR CERTIFICACIÓN</span><h2>{editingCatalogCertification.name}</h2></div><button className="modal-close" onClick={() => setEditingCatalogCertification(null)}>Cancelar</button></div><form onSubmit={handleUpdateCatalogCertification} className="edit-form"><label>Marca<select name="brand_id" defaultValue={editingCatalogCertification.brand_id}>{brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select></label><label>Nombre<input name="name" defaultValue={editingCatalogCertification.name} required /></label><label>Código<input name="code" defaultValue={editingCatalogCertification.code ?? ""} /></label><label>Tipo<select name="certification_type" defaultValue={editingCatalogCertification.certification_type}><option value="technical">Técnica</option><option value="sales">Ventas</option><option value="presales">Preventas</option><option value="implementation">Implementación</option><option value="support">Soporte</option><option value="architecture">Arquitectura</option><option value="other">Otra</option></select></label><label>Nivel<input name="level" defaultValue={editingCatalogCertification.level ?? ""} /></label><label>Vigencia (meses)<input name="validity_months" type="number" min="1" defaultValue={editingCatalogCertification.validity_months ?? ""} /></label><label>URL oficial<input name="official_url" type="url" defaultValue={editingCatalogCertification.official_url ?? ""} /></label><label>Estado<select name="status" defaultValue={editingCatalogCertification.status}><option value="active">Activa</option><option value="inactive">Inactiva</option><option value="retired">Retirada</option></select></label><label className="form-wide">Observaciones<textarea name="notes" defaultValue={editingCatalogCertification.notes ?? ""} /></label><button>Guardar cambios</button></form></section></div>}
+
+      {editingRequirement && <div className="modal-backdrop edit-modal-backdrop" role="presentation" onMouseDown={() => setEditingRequirement(null)}><section className="entity-modal edit-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><div className="modal-heading"><div><span className="kicker">EDITAR REQUISITO</span><h2>{brandNameById.get(editingRequirement.brand_id)}</h2></div><button className="modal-close" onClick={() => setEditingRequirement(null)}>Cancelar</button></div><form onSubmit={handleUpdateRequirement} className="edit-form"><label>Marca<select name="brand_id" defaultValue={editingRequirement.brand_id}>{brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select></label><label>Nombre de certificación<input name="certification_name" defaultValue={certificationById.get(editingRequirement.certification_id)?.name ?? ""} required /></label><label>Cantidad requerida<input name="required_count" type="number" min="1" defaultValue={editingRequirement.required_count} required /></label><label>Vigente desde<input name="effective_from" type="date" defaultValue={editingRequirement.effective_from ?? ""} /></label><label>Vigente hasta<input name="effective_until" type="date" defaultValue={editingRequirement.effective_until ?? ""} /></label><label className="checkbox-label"><input name="distinct_people_required" type="checkbox" defaultChecked={editingRequirement.distinct_people_required} /> Técnicos distintos</label><label className="checkbox-label"><input name="mandatory" type="checkbox" defaultChecked={editingRequirement.mandatory} /> Obligatorio</label><label className="form-wide">Notas<textarea name="notes" defaultValue={editingRequirement.notes ?? ""} /></label><button>Guardar cambios</button></form></section></div>}
+
+      {editingCertificationRecord && <div className="modal-backdrop edit-modal-backdrop" role="presentation" onMouseDown={() => setEditingCertificationRecord(null)}><section className="entity-modal edit-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><div className="modal-heading"><div><span className="kicker">EDITAR CERTIFICACIÓN REALIZADA</span><h2>{certificationById.get(editingCertificationRecord.certification_id)?.name ?? "Certificación"}</h2></div><button className="modal-close" onClick={() => setEditingCertificationRecord(null)}>Cancelar</button></div><form onSubmit={handleUpdateCertificationRecord} className="edit-form"><label>Técnico<select name="technician_id" defaultValue={editingCertificationRecord.technician_id}>{technicians.map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select></label><label>Certificación<select name="certification_id" defaultValue={editingCertificationRecord.certification_id}>{certifications.map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select></label><label>Fecha de emisión<input name="issued_at" type="date" defaultValue={editingCertificationRecord.issued_at ?? ""} /></label><label>Fecha de vencimiento<input name="expires_at" type="date" defaultValue={editingCertificationRecord.expires_at ?? ""} /></label><label>N.º de certificado<input name="certificate_number" defaultValue={editingCertificationRecord.certificate_number ?? ""} /></label><label>Estado<select name="status" defaultValue={editingCertificationRecord.status}><option value="active">Vigente</option><option value="expiring">Por vencer</option><option value="pending_validation">Pendiente de validar</option></select></label><label>Nuevo PDF (opcional)<input name="certificate_file" type="file" accept="application/pdf" /></label><label>Enlace de evidencia<input name="verification_url" type="url" defaultValue={editingCertificationRecord.verification_url ?? ""} /></label><label className="form-wide">Observación o información extra<textarea name="notes" defaultValue={editingCertificationRecord.notes ?? ""} /></label><button>Guardar cambios</button></form></section></div>}
     </main>
   );
 }
