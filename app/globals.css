@@ -208,6 +208,7 @@ button.table-row { cursor: pointer; }
 .certificate-assignments strong { font-size: 13px; }
 .certificate-assignments span { margin-top: 4px; color: var(--muted); font-size: 11px; }
 .assignment-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.missing-pdf { display: inline-flex !important; align-items: center; gap: 5px; width: fit-content; margin-top: 6px !important; color: #9b5b00 !important; font-size: 11px !important; font-weight: 700; }
 .modal-empty { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
 .modal-form-section details { padding: 14px 16px; border: 1px solid var(--line); background: #fbfbfd; }
 .modal-form-section details[open] { border-color: #aeb8ff; }
