@@ -351,20 +351,29 @@ export default function Home() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const brandId = String(form.get("brand_id"));
-    const certificationId = String(form.get("certification_id"));
-    const certification = certifications.find((item) => item.id === certificationId);
-    if (!certification || certification.brand_id !== brandId) {
-      setMessage("La certificación debe pertenecer a la marca seleccionada.");
+    const certificationName = String(form.get("certification_name") ?? "").trim();
+    const requiredCount = Number(form.get("required_count"));
+    if (!brandId || !certificationName) {
+      setMessage("Indica la marca y el nombre de la certificación.");
       return;
     }
-    const result = await getSupabaseClient().from("brand_requirements").insert({
-      brand_id: brandId,
-      certification_id: certificationId,
-      required_count: Number(form.get("required_count")),
-      notes: String(form.get("notes") ?? "").trim() || null,
-    });
+    if (!Number.isInteger(requiredCount) || requiredCount < 1) {
+      setMessage("La cantidad debe ser un entero mayor que cero.");
+      return;
+    }
+    const normalizedName = certificationName.toLocaleLowerCase();
+    let certification = certifications.find((item) => item.brand_id === brandId && item.name.trim().toLocaleLowerCase() === normalizedName);
+    if (!certification) {
+      const created = await getSupabaseClient().from("certification_catalog").insert({ brand_id: brandId, name: certificationName, status: "active" }).select("id,brand_id,name,code,certification_type,level,validity_months,official_url,status,notes").single();
+      if (created.error || !created.data) { setMessage(created.error?.message ?? "No se pudo crear la certificación."); return; }
+      certification = created.data as Certification;
+    }
+    const existingRequirement = requirements.find((item) => item.brand_id === brandId && item.certification_id === certification!.id);
+    const result = existingRequirement
+      ? await getSupabaseClient().from("brand_requirements").update({ required_count: requiredCount }).eq("id", existingRequirement.id)
+      : await getSupabaseClient().from("brand_requirements").insert({ brand_id: brandId, certification_id: certification.id, required_count: requiredCount });
     if (result.error) setMessage(result.error.message);
-    else { event.currentTarget.reset(); setMessage("Requisito guardado."); await loadDashboard(); }
+    else { event.currentTarget.reset(); setMessage(existingRequirement ? "Cantidad del requisito actualizada." : "Requisito guardado."); await loadDashboard(); }
   }
 
   async function handleAddTechnicianCertification(event: FormEvent<HTMLFormElement>) {
@@ -686,7 +695,7 @@ export default function Home() {
 
         {activeSection === "requirements" && canManage && <section className="management-panel contextual-management">
           <div><span className="kicker">ADMINISTRACIÓN DE REQUISITOS</span><h2>Agregar un requisito</h2><p>Define cuántos técnicos certificados requiere cada marca para cumplir.</p></div>
-          <div className="management-actions"><details><summary>Nuevo requisito</summary><form onSubmit={handleAddRequirement} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><select name="certification_id" required><option value="">Certificación</option>{certifications.filter((certification) => certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select><input name="required_count" type="number" min="1" defaultValue="1" required /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar requisito</button></form></details></div>
+          <div className="management-actions"><details><summary>Nuevo requisito</summary><form onSubmit={handleAddRequirement} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><input name="certification_name" placeholder="Nombre de certificación" required /><input name="required_count" type="number" min="1" defaultValue="1" title="Cantidad requerida" required /><button>Guardar requisito</button></form></details></div>
         </section>}
 
         {activeSection === "requirements" && selectedRequirement && <section className="detail-panel">
@@ -714,7 +723,7 @@ export default function Home() {
             {requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).length > 0 ? <div className="brand-requirements">{requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).map((requirement) => <div key={requirement.id}><strong>{certificationById.get(requirement.certification_id)?.name ?? "Certificación sin identificar"}</strong><span>{requirement.required_count} cupos requeridos</span></div>)}</div> : <p className="modal-empty">Aún no hay requisitos registrados para esta marca.</p>}
           </div>
 
-          {canManage && <div className="modal-section modal-form-section"><details><summary>Agregar requisito a {selectedBrand.name}</summary><form onSubmit={handleAddRequirement} className="inline-form"><input type="hidden" name="brand_id" value={selectedBrand.id} /><select name="certification_id" required><option value="">Certificación de {selectedBrand.name}</option>{certifications.filter((certification) => certification.brand_id === selectedBrand.id && certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{certification.name}{certification.code ? ` · ${certification.code}` : ""}</option>)}</select><input name="required_count" type="number" min="1" defaultValue="1" required /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar requisito</button></form></details></div>}
+          {canManage && <div className="modal-section modal-form-section"><details><summary>Agregar requisito a {selectedBrand.name}</summary><form onSubmit={handleAddRequirement} className="inline-form"><input type="hidden" name="brand_id" value={selectedBrand.id} /><input name="certification_name" placeholder="Nombre de certificación" required /><input name="required_count" type="number" min="1" defaultValue="1" title="Cantidad requerida" required /><button>Guardar requisito</button></form></details></div>}
         </section>
       </div>}
     </main>
