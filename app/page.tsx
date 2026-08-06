@@ -9,7 +9,7 @@ type Brand = { id: string; name: string; slug: string; status: string; internal_
 type Technician = { id: string; full_name: string; email: string | null; job_title: string | null; area: string | null; status: string; start_date: string | null; manager_name: string | null; notes: string | null };
 type Requirement = { id: string; brand_id: string; certification_id: string; required_count: number; distinct_people_required: boolean; mandatory: boolean; effective_from: string | null; effective_until: string | null; notes: string | null };
 type Certification = { id: string; brand_id: string; name: string; code: string | null; certification_type: string; level: string | null; validity_months: number | null; official_url: string | null; status: string; notes: string | null };
-type CertificationRecord = { id: string; certification_id: string; technician_id: string; status: string; expires_at: string | null; issued_at: string | null; certificate_number: string | null; verification_url: string | null };
+type CertificationRecord = { id: string; certification_id: string; technician_id: string; status: string; expires_at: string | null; issued_at: string | null; certificate_number: string | null; verification_url: string | null; evidence_path: string | null };
 type Section = "summary" | "brands" | "technicians" | "certifications" | "requirements";
 
 type BrandSummary = {
@@ -74,7 +74,7 @@ export default function Home() {
         supabase.from("technicians").select("id,full_name,email,job_title,area,status,start_date,manager_name,notes").order("full_name"),
         supabase.from("brand_requirements").select("id,brand_id,certification_id,required_count,distinct_people_required,mandatory,effective_from,effective_until,notes"),
         supabase.from("certification_catalog").select("id,brand_id,name,code,certification_type,level,validity_months,official_url,status,notes").order("name"),
-        supabase.from("technician_certifications").select("id,certification_id,technician_id,status,expires_at,issued_at,certificate_number,verification_url"),
+        supabase.from("technician_certifications").select("id,certification_id,technician_id,status,expires_at,issued_at,certificate_number,verification_url,evidence_path"),
         supabase.from("user_profiles").select("role").maybeSingle(),
       ]);
       const error = brandsResult.error || techniciansResult.error || requirementsResult.error || certificationsResult.error || recordsResult.error || profileResult.error;
@@ -392,17 +392,35 @@ export default function Home() {
   async function handleAddTechnicianCertification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const result = await getSupabaseClient().from("technician_certifications").insert({
-      technician_id: String(form.get("technician_id")),
-      certification_id: String(form.get("certification_id")),
+    const technicianId = String(form.get("technician_id"));
+    const certificationId = String(form.get("certification_id"));
+    if (!technicianId || !certificationId) { setMessage("Selecciona un técnico y una certificación."); return; }
+    const supabase = getSupabaseClient();
+    const evidenceFile = form.get("certificate_file");
+    let evidencePath: string | null = null;
+    if (evidenceFile instanceof File && evidenceFile.size > 0) {
+      const isPdf = evidenceFile.type === "application/pdf" || evidenceFile.name.toLocaleLowerCase().endsWith(".pdf");
+      if (!isPdf) { setMessage("El respaldo debe ser un archivo PDF."); return; }
+      if (evidenceFile.size > 10485760) { setMessage("El PDF no puede superar 10 MB."); return; }
+      const safeName = evidenceFile.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+      const upload = await supabase.storage.from("certificate-files").upload(`${certificationId}/${technicianId}/${crypto.randomUUID()}-${safeName}`, evidenceFile, { contentType: "application/pdf", upsert: false });
+      if (upload.error) { setMessage(upload.error.message); return; }
+      evidencePath = upload.data.path;
+    }
+    const result = await supabase.from("technician_certifications").insert({
+      technician_id: technicianId,
+      certification_id: certificationId,
       issued_at: String(form.get("issued_at") || "") || null,
       expires_at: String(form.get("expires_at") || "") || null,
       certificate_number: String(form.get("certificate_number") ?? "").trim() || null,
       verification_url: String(form.get("verification_url") ?? "").trim() || null,
+      evidence_path: evidencePath,
       status: String(form.get("status")),
     });
-    if (result.error) setMessage(result.error.message);
-    else { event.currentTarget.reset(); setMessage("Certificación asignada al técnico."); await loadDashboard(); }
+    if (result.error) {
+      if (evidencePath) await supabase.storage.from("certificate-files").remove([evidencePath]);
+      setMessage(result.error.message);
+    } else { event.currentTarget.reset(); setMessage("Certificación asignada al técnico."); await loadDashboard(); }
   }
 
   async function editRequirement(requirement: Requirement) {
@@ -461,7 +479,21 @@ export default function Home() {
   async function deleteTechnicianCertification(record: CertificationRecord) {
     if (!window.confirm("¿Eliminar esta certificación del técnico?")) return;
     const result = await getSupabaseClient().from("technician_certifications").delete().eq("id", record.id);
-    if (result.error) setMessage(result.error.message); else { setMessage("Certificación eliminada."); await loadDashboard(); }
+    if (result.error) setMessage(result.error.message); else {
+      if (record.evidence_path) await getSupabaseClient().storage.from("certificate-files").remove([record.evidence_path]);
+      setMessage("Certificación eliminada."); await loadDashboard();
+    }
+  }
+
+  async function openCertificateEvidence(record: CertificationRecord) {
+    if (record.evidence_path) {
+      const signedFile = await getSupabaseClient().storage.from("certificate-files").createSignedUrl(record.evidence_path, 300);
+      if (signedFile.error || !signedFile.data?.signedUrl) { setMessage(signedFile.error?.message ?? "No se pudo abrir el PDF."); return; }
+      window.open(signedFile.data.signedUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (record.verification_url) { window.open(record.verification_url, "_blank", "noopener,noreferrer"); return; }
+    setMessage("Esta certificación no tiene un PDF ni enlace de respaldo.");
   }
 
   const brandSummaries = useMemo<BrandSummary[]>(() => {
@@ -733,10 +765,23 @@ export default function Home() {
           <div className="detail-grid modal-summary"><div><span>Estado</span><strong>{selectedBrand.status}</strong></div><div><span>Cobertura</span><strong>{selectedBrandSummary.covered} de {selectedBrandSummary.required} cupos</strong></div><div><span>Cumplimiento</span><strong>{selectedBrandSummary.compliance}%</strong></div><div><span>Certificaciones</span><strong>{certifications.filter((certification) => certification.brand_id === selectedBrand.id).length}</strong></div><div><span>Requisitos</span><strong>{requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).length}</strong></div><div><span>Notas</span><strong>{selectedBrand.notes ?? "Sin notas"}</strong></div></div>
 
           <div className="modal-section"><div><span className="kicker">REQUISITOS DE {selectedBrand.name.toUpperCase()}</span><h3>Requisitos de certificación</h3></div>
-            {requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).length > 0 ? <div className="brand-requirements">{requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).map((requirement) => <div key={requirement.id}><strong>{certificationById.get(requirement.certification_id)?.name ?? "Certificación sin identificar"}</strong><span>{requirement.required_count} cupos requeridos</span></div>)}</div> : <p className="modal-empty">Aún no hay requisitos registrados para esta marca.</p>}
+            {requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).length > 0 ? <div className="brand-requirements">{requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).map((requirement) => <button type="button" key={requirement.id} onClick={() => setSelectedCertificationId(requirement.certification_id)}><strong>{certificationById.get(requirement.certification_id)?.name ?? "Certificación sin identificar"}</strong><span>{requirement.required_count} cupos requeridos</span></button>)}</div> : <p className="modal-empty">Aún no hay requisitos registrados para esta marca.</p>}
           </div>
 
           {canManage && <div className="modal-section modal-form-section"><details><summary>Agregar requisito a {selectedBrand.name}</summary><form onSubmit={handleAddRequirement} className="inline-form"><input type="hidden" name="brand_id" value={selectedBrand.id} /><input name="certification_name" placeholder="Nombre de certificación" required /><input name="required_count" type="number" min="1" defaultValue="1" title="Cantidad requerida" required /><button>Guardar requisito</button></form></details></div>}
+        </section>
+      </div>}
+
+      {activeSection === "brands" && selectedBrand && selectedCertification && selectedCertification.brand_id === selectedBrand.id && <div className="modal-backdrop certificate-modal-backdrop" role="presentation" onMouseDown={() => setSelectedCertificationId(null)}>
+        <section className="entity-modal certificate-modal" role="dialog" aria-modal="true" aria-labelledby="certification-modal-title" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="modal-heading"><div><span className="kicker">CERTIFICACIÓN · {selectedBrand.name.toUpperCase()}</span><h2 id="certification-modal-title">{selectedCertification.name}</h2><p>{selectedCertification.code ?? "Sin código"} · {selectedCertification.certification_type}</p></div><button className="modal-close" onClick={() => setSelectedCertificationId(null)}>Volver a {selectedBrand.name}</button></div>
+          <div className="detail-grid modal-summary"><div><span>Cupos requeridos</span><strong>{requirements.find((requirement) => requirement.brand_id === selectedBrand.id && requirement.certification_id === selectedCertification.id)?.required_count ?? 0}</strong></div><div><span>Técnicos certificados</span><strong>{new Set(records.filter((record) => record.certification_id === selectedCertification.id && record.status === "active").map((record) => record.technician_id)).size}</strong></div><div><span>Vigencia</span><strong>{selectedCertification.validity_months ? `${selectedCertification.validity_months} meses` : "No definida"}</strong></div></div>
+
+          <div className="modal-section"><div><span className="kicker">EJECUCIÓN</span><h3>Certificaciones realizadas</h3></div>
+            {records.filter((record) => record.certification_id === selectedCertification.id).length > 0 ? <div className="certificate-assignments">{records.filter((record) => record.certification_id === selectedCertification.id).map((record) => <div key={record.id}><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>Emitida: {formatDate(record.issued_at)} · Vence: {formatDate(record.expires_at)}</span>{record.certificate_number && <span>N.º {record.certificate_number}</span>}</div><div className="assignment-actions">{(record.evidence_path || record.verification_url) && <button type="button" className="text-button" onClick={() => openCertificateEvidence(record)}>Ver respaldo</button>}{canManage && <button type="button" className="text-button" onClick={() => editTechnicianCertification(record)}>Editar</button>}</div></div>)}</div> : <p className="modal-empty">Todavía no hay técnicos registrados con esta certificación.</p>}
+          </div>
+
+          {canManage && <div className="modal-section modal-form-section"><details><summary>Registrar certificación completada</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><input type="hidden" name="certification_id" value={selectedCertification.id} /><input type="hidden" name="status" value="active" /><select name="technician_id" required><option value="">Técnico certificado</option>{technicians.filter((technician) => technician.status === "active").map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><input name="issued_at" type="date" title="Fecha de emisión" required /><input name="expires_at" type="date" title="Fecha de vencimiento" /><input name="certificate_number" placeholder="N.º de certificado" /><input name="certificate_file" type="file" accept="application/pdf" title="PDF del certificado" /><button>Registrar completada</button></form></details></div>}
         </section>
       </div>}
     </main>
