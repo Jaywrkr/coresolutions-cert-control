@@ -9,7 +9,7 @@ type Brand = { id: string; name: string; slug: string; status: string; internal_
 type Technician = { id: string; full_name: string; email: string | null; job_title: string | null; area: string | null; status: string; start_date: string | null; manager_name: string | null; notes: string | null };
 type Requirement = { id: string; brand_id: string; certification_id: string; required_count: number; distinct_people_required: boolean; mandatory: boolean; effective_from: string | null; effective_until: string | null; notes: string | null };
 type Certification = { id: string; brand_id: string; name: string; code: string | null; certification_type: string; level: string | null; validity_months: number | null; official_url: string | null; status: string; notes: string | null };
-type CertificationRecord = { id: string; certification_id: string; technician_id: string; status: string; expires_at: string | null; issued_at: string | null; certificate_number: string | null; verification_url: string | null; evidence_path: string | null };
+type CertificationRecord = { id: string; certification_id: string; technician_id: string; status: string; expires_at: string | null; issued_at: string | null; certificate_number: string | null; verification_url: string | null; evidence_path: string | null; notes: string | null };
 type Section = "summary" | "brands" | "technicians" | "certifications" | "requirements";
 
 type BrandSummary = {
@@ -74,7 +74,7 @@ export default function Home() {
         supabase.from("technicians").select("id,full_name,email,job_title,area,status,start_date,manager_name,notes").order("full_name"),
         supabase.from("brand_requirements").select("id,brand_id,certification_id,required_count,distinct_people_required,mandatory,effective_from,effective_until,notes"),
         supabase.from("certification_catalog").select("id,brand_id,name,code,certification_type,level,validity_months,official_url,status,notes").order("name"),
-        supabase.from("technician_certifications").select("id,certification_id,technician_id,status,expires_at,issued_at,certificate_number,verification_url,evidence_path"),
+        supabase.from("technician_certifications").select("id,certification_id,technician_id,status,expires_at,issued_at,certificate_number,verification_url,evidence_path,notes"),
         supabase.from("user_profiles").select("role").maybeSingle(),
       ]);
       const error = brandsResult.error || techniciansResult.error || requirementsResult.error || certificationsResult.error || recordsResult.error || profileResult.error;
@@ -96,6 +96,28 @@ export default function Home() {
 
   useEffect(() => {
     if (session) void loadDashboard();
+  }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
+    const supabase = getSupabaseClient();
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => void loadDashboard(), 250);
+    };
+    const channel = supabase
+      .channel("corecert-dashboard-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "brands" }, scheduleRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "technicians" }, scheduleRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "certification_catalog" }, scheduleRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "brand_requirements" }, scheduleRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "technician_certifications" }, scheduleRefresh)
+      .subscribe();
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      void supabase.removeChannel(channel);
+    };
   }, [session]);
 
   async function handleAuth(event: FormEvent<HTMLFormElement>) {
@@ -229,6 +251,7 @@ export default function Home() {
       brand_id: String(form.get("brand_id")),
       name: String(form.get("name")).trim(),
       code: String(form.get("code") ?? "").trim() || null,
+      notes: asOptionalText(form.get("notes")),
       status: "active",
     });
     if (result.error) setMessage(result.error.message);
@@ -415,6 +438,7 @@ export default function Home() {
       certificate_number: String(form.get("certificate_number") ?? "").trim() || null,
       verification_url: String(form.get("verification_url") ?? "").trim() || null,
       evidence_path: evidencePath,
+      notes: asOptionalText(form.get("notes")),
       status: String(form.get("status")),
     });
     if (result.error) {
@@ -472,7 +496,9 @@ export default function Home() {
   async function editTechnicianCertification(record: CertificationRecord) {
     const expiry = window.prompt("Fecha de vencimiento (AAAA-MM-DD; déjalo vacío si no aplica)", record.expires_at ?? "");
     if (expiry === null) return;
-    const result = await getSupabaseClient().from("technician_certifications").update({ expires_at: expiry.trim() || null }).eq("id", record.id);
+    const notes = window.prompt("Observación o información extra (opcional)", record.notes ?? "");
+    if (notes === null) return;
+    const result = await getSupabaseClient().from("technician_certifications").update({ expires_at: expiry.trim() || null, notes: notes.trim() || null }).eq("id", record.id);
     if (result.error) setMessage(result.error.message); else { setMessage("Certificación actualizada."); await loadDashboard(); }
   }
 
@@ -710,14 +736,14 @@ export default function Home() {
         {activeSection === "certifications" && canManage && <section className="management-panel contextual-management">
           <div><span className="kicker">ADMINISTRACIÓN DE CERTIFICACIONES</span><h2>Catálogo y asignaciones</h2><p>Crea certificaciones por marca y asígnalas al técnico que ya las posee.</p></div>
           <div className="management-actions">
-            <details><summary>Nueva certificación</summary><form onSubmit={handleAddCatalogCertification} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><input name="name" placeholder="Nombre de certificación" required /><input name="code" placeholder="Código (opcional)" /><button>Guardar certificación</button></form></details>
-            <details><summary>Asignar a técnico</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><select name="technician_id" required><option value="">Técnico</option>{technicians.filter((technician) => technician.status === "active").map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><select name="certification_id" required><option value="">Certificación</option>{certifications.filter((certification) => certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select><input name="issued_at" type="date" title="Fecha de emisión" /><input name="expires_at" type="date" title="Fecha de vencimiento" /><input name="certificate_number" placeholder="N.º de certificado" /><input name="verification_url" type="url" placeholder="Enlace de evidencia" /><select name="status" defaultValue="active"><option value="active">Vigente</option><option value="expiring">Por vencer</option><option value="pending_validation">Pendiente de validar</option></select><button>Guardar asignación</button></form></details>
+            <details><summary>Nueva certificación</summary><form onSubmit={handleAddCatalogCertification} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><input name="name" placeholder="Nombre de certificación" required /><input name="code" placeholder="Código (opcional)" /><input name="notes" placeholder="Observación (opcional)" /><button>Guardar certificación</button></form></details>
+            <details><summary>Asignar a técnico</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><select name="technician_id" required><option value="">Técnico</option>{technicians.filter((technician) => technician.status === "active").map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><select name="certification_id" required><option value="">Certificación</option>{certifications.filter((certification) => certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select><input name="issued_at" type="date" title="Fecha de emisión" /><input name="expires_at" type="date" title="Fecha de vencimiento" /><input name="certificate_number" placeholder="N.º de certificado" /><input name="notes" placeholder="Observación (opcional)" /><input name="certificate_file" type="file" accept="application/pdf" title="PDF del certificado" /><input name="verification_url" type="url" placeholder="Enlace de evidencia" /><select name="status" defaultValue="active"><option value="active">Vigente</option><option value="expiring">Por vencer</option><option value="pending_validation">Pendiente de validar</option></select><button>Guardar asignación</button></form></details>
           </div>
         </section>}
 
         {activeSection === "certifications" && selectedCertification && <section className="detail-panel">
           <div className="detail-heading"><div><span className="kicker">CERTIFICACIÓN SELECCIONADA</span><h2>{selectedCertification.name}</h2></div><button className="text-button" onClick={() => setSelectedCertificationId(null)}>Cerrar ficha</button></div>
-          <div className="detail-grid"><div><span>Marca</span><strong>{brandNameById.get(selectedCertification.brand_id) ?? "Sin marca"}</strong></div><div><span>Código</span><strong>{selectedCertification.code ?? "Sin código"}</strong></div><div><span>Tipo</span><strong>{selectedCertification.certification_type}</strong></div><div><span>Estado</span><strong>{selectedCertification.status}</strong></div><div><span>Técnicos certificados</span><strong>{new Set(records.filter((record) => record.certification_id === selectedCertification.id).map((record) => record.technician_id)).size}</strong></div><div><span>Requisitos asociados</span><strong>{requirements.filter((requirement) => requirement.certification_id === selectedCertification.id).length}</strong></div></div>
+          <div className="detail-grid"><div><span>Marca</span><strong>{brandNameById.get(selectedCertification.brand_id) ?? "Sin marca"}</strong></div><div><span>Código</span><strong>{selectedCertification.code ?? "Sin código"}</strong></div><div><span>Tipo</span><strong>{selectedCertification.certification_type}</strong></div><div><span>Estado</span><strong>{selectedCertification.status}</strong></div><div><span>Técnicos certificados</span><strong>{new Set(records.filter((record) => record.certification_id === selectedCertification.id).map((record) => record.technician_id)).size}</strong></div><div><span>Requisitos asociados</span><strong>{requirements.filter((requirement) => requirement.certification_id === selectedCertification.id).length}</strong></div><div><span>Observaciones</span><strong>{selectedCertification.notes ?? "Sin observaciones"}</strong></div></div>
         </section>}
 
         {activeSection === "certifications" && <section className="panel data-panel">
@@ -778,10 +804,10 @@ export default function Home() {
           <div className="detail-grid modal-summary"><div><span>Cupos requeridos</span><strong>{requirements.find((requirement) => requirement.brand_id === selectedBrand.id && requirement.certification_id === selectedCertification.id)?.required_count ?? 0}</strong></div><div><span>Técnicos certificados</span><strong>{new Set(records.filter((record) => record.certification_id === selectedCertification.id && record.status === "active").map((record) => record.technician_id)).size}</strong></div><div><span>Vigencia</span><strong>{selectedCertification.validity_months ? `${selectedCertification.validity_months} meses` : "No definida"}</strong></div></div>
 
           <div className="modal-section"><div><span className="kicker">EJECUCIÓN</span><h3>Certificaciones realizadas</h3></div>
-            {records.filter((record) => record.certification_id === selectedCertification.id).length > 0 ? <div className="certificate-assignments">{records.filter((record) => record.certification_id === selectedCertification.id).map((record) => <div key={record.id}><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>Emitida: {formatDate(record.issued_at)} · Vence: {formatDate(record.expires_at)}</span>{record.certificate_number && <span>N.º {record.certificate_number}</span>}</div><div className="assignment-actions">{!record.evidence_path && <span className="missing-pdf" title="Sin PDF adjunto"><FileWarning size={14} aria-hidden="true" />Sin PDF adjunto</span>}{(record.evidence_path || record.verification_url) && <button type="button" className="text-button" onClick={() => openCertificateEvidence(record)}>Ver respaldo</button>}{canManage && <button type="button" className="text-button" onClick={() => editTechnicianCertification(record)}>Editar</button>}</div></div>)}</div> : <p className="modal-empty">Todavía no hay técnicos registrados con esta certificación.</p>}
+            {records.filter((record) => record.certification_id === selectedCertification.id).length > 0 ? <div className="certificate-assignments">{records.filter((record) => record.certification_id === selectedCertification.id).map((record) => <div key={record.id}><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>Emitida: {formatDate(record.issued_at)} · Vence: {formatDate(record.expires_at)}</span>{record.certificate_number && <span>N.º {record.certificate_number}</span>}{record.notes && <span className="assignment-note">{record.notes}</span>}</div><div className="assignment-actions">{!record.evidence_path && <span className="missing-pdf" title="Sin PDF adjunto"><FileWarning size={14} aria-hidden="true" />Sin PDF adjunto</span>}{(record.evidence_path || record.verification_url) && <button type="button" className="text-button" onClick={() => openCertificateEvidence(record)}>Ver respaldo</button>}{canManage && <button type="button" className="text-button" onClick={() => editTechnicianCertification(record)}>Editar</button>}</div></div>)}</div> : <p className="modal-empty">Todavía no hay técnicos registrados con esta certificación.</p>}
           </div>
 
-          {canManage && <div className="modal-section modal-form-section"><details><summary>Registrar certificación completada</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><input type="hidden" name="certification_id" value={selectedCertification.id} /><input type="hidden" name="status" value="active" /><select name="technician_id" required><option value="">Técnico certificado</option>{technicians.filter((technician) => technician.status === "active").map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><input name="issued_at" type="date" title="Fecha de emisión" required /><input name="expires_at" type="date" title="Fecha de vencimiento" /><input name="certificate_number" placeholder="N.º de certificado" /><input name="certificate_file" type="file" accept="application/pdf" title="PDF del certificado" /><button>Registrar completada</button></form></details></div>}
+          {canManage && <div className="modal-section modal-form-section"><details><summary>Registrar certificación completada</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><input type="hidden" name="certification_id" value={selectedCertification.id} /><input type="hidden" name="status" value="active" /><select name="technician_id" required><option value="">Técnico certificado</option>{technicians.filter((technician) => technician.status === "active").map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><input name="issued_at" type="date" title="Fecha de emisión" required /><input name="expires_at" type="date" title="Fecha de vencimiento" /><input name="certificate_number" placeholder="N.º de certificado" /><input name="notes" placeholder="Observación o información extra" /><input name="certificate_file" type="file" accept="application/pdf" title="PDF del certificado" /><button>Registrar completada</button></form></details></div>}
         </section>
       </div>}
     </main>
