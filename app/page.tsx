@@ -361,17 +361,30 @@ export default function Home() {
       setMessage("La cantidad debe ser un entero mayor que cero.");
       return;
     }
-    const normalizedName = certificationName.toLocaleLowerCase();
-    let certification = certifications.find((item) => item.brand_id === brandId && item.name.trim().toLocaleLowerCase() === normalizedName);
-    if (!certification) {
-      const created = await getSupabaseClient().from("certification_catalog").insert({ brand_id: brandId, name: certificationName, status: "active" }).select("id,brand_id,name,code,certification_type,level,validity_months,official_url,status,notes").single();
-      if (created.error || !created.data) { setMessage(created.error?.message ?? "No se pudo crear la certificación."); return; }
-      certification = created.data as Certification;
+    const supabase = getSupabaseClient();
+    const catalogLookup = await supabase.from("certification_catalog").select("id").eq("brand_id", brandId).eq("name", certificationName).maybeSingle();
+    if (catalogLookup.error) { setMessage(catalogLookup.error.message); return; }
+    let certificationId = catalogLookup.data?.id;
+    if (!catalogLookup.data) {
+      const created = await supabase.from("certification_catalog").insert({ brand_id: brandId, name: certificationName, status: "active" }).select("id").single();
+      if (created.error?.code === "23505") {
+        const retryLookup = await supabase.from("certification_catalog").select("id").eq("brand_id", brandId).eq("name", certificationName).maybeSingle();
+        if (retryLookup.error) { setMessage(retryLookup.error.message); return; }
+        certificationId = retryLookup.data?.id;
+      } else if (created.error || !created.data) {
+        setMessage(created.error?.message ?? "No se pudo crear la certificación.");
+        return;
+      } else {
+        certificationId = created.data.id;
+      }
     }
-    const existingRequirement = requirements.find((item) => item.brand_id === brandId && item.certification_id === certification!.id);
+    if (!certificationId) { setMessage("No se pudo recuperar la certificación."); return; }
+    const requirementLookup = await supabase.from("brand_requirements").select("id").eq("brand_id", brandId).eq("certification_id", certificationId).maybeSingle();
+    if (requirementLookup.error) { setMessage(requirementLookup.error.message); return; }
+    const existingRequirement = requirementLookup.data;
     const result = existingRequirement
-      ? await getSupabaseClient().from("brand_requirements").update({ required_count: requiredCount }).eq("id", existingRequirement.id)
-      : await getSupabaseClient().from("brand_requirements").insert({ brand_id: brandId, certification_id: certification.id, required_count: requiredCount });
+      ? await supabase.from("brand_requirements").update({ required_count: requiredCount }).eq("id", existingRequirement.id)
+      : await supabase.from("brand_requirements").insert({ brand_id: brandId, certification_id: certificationId, required_count: requiredCount });
     if (result.error) setMessage(result.error.message);
     else { event.currentTarget.reset(); setMessage(existingRequirement ? "Cantidad del requisito actualizada." : "Requisito guardado."); await loadDashboard(); }
   }
