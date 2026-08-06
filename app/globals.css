@@ -197,9 +197,17 @@ button.table-row { cursor: pointer; }
 .modal-section { padding: 22px 30px; border-top: 1px solid var(--line); }
 .modal-section h3 { margin: 3px 0 0; font-size: 18px; letter-spacing: -.025em; }
 .brand-requirements { display: grid; gap: 8px; margin-top: 16px; }
-.brand-requirements > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 15px; border-left: 3px solid var(--blue); background: #f5f6ff; }
+.brand-requirements > button { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; padding: 13px 15px; border: 0; border-left: 3px solid var(--blue); background: #f5f6ff; color: var(--ink); cursor: pointer; text-align: left; }
+.brand-requirements > button:hover { background: #e9ecff; }
 .brand-requirements strong { font-size: 13px; }
 .brand-requirements span { color: var(--muted); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; white-space: nowrap; }
+.certificate-modal-backdrop { z-index: 60; }
+.certificate-assignments { display: grid; gap: 8px; margin-top: 16px; }
+.certificate-assignments > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 15px; border: 1px solid var(--line); background: #fbfbfd; }
+.certificate-assignments strong, .certificate-assignments span { display: block; }
+.certificate-assignments strong { font-size: 13px; }
+.certificate-assignments span { margin-top: 4px; color: var(--muted); font-size: 11px; }
+.assignment-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .modal-empty { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
 .modal-form-section details { padding: 14px 16px; border: 1px solid var(--line); background: #fbfbfd; }
 .modal-form-section details[open] { border-color: #aeb8ff; }
@@ -251,5 +259,6 @@ button.table-row { cursor: pointer; }
   .modal-heading, .modal-section { padding-left: 18px; padding-right: 18px; }
   .modal-heading h2 { font-size: 25px; }
   .modal-summary { padding: 18px; grid-template-columns: 1fr; }
-  .brand-requirements > div { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .brand-requirements > button, .certificate-assignments > div { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .assignment-actions { justify-content: flex-start; }
 }
