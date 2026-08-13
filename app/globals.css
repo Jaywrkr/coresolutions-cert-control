@@ -169,6 +169,7 @@ h1 { margin: 0; font-size: clamp(30px, 3vw, 40px); line-height: 1; letter-spacin
 button.table-row { cursor: pointer; }
 .table-row strong, .table-row span { display: block; }
 .table-row div:not(.brand-logo) span { margin-top: 3px; color: var(--muted); font-size: 11px; }
+.coverage-cell strong { margin-top: 3px; color: var(--ink); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; }
 .selectable-row { cursor: pointer; transition: background .16s ease, box-shadow .16s ease; }
 .selectable-row:hover { background: #f8f9ff; }
 .selected-row { background: #eef0ff; box-shadow: inset 4px 0 0 var(--blue); }
@@ -265,6 +266,9 @@ button.table-row { cursor: pointer; }
   .progress-wrap { grid-column: 2 / 4; width: 100%; }
   .table-row { grid-template-columns: 42px 1fr 18px; padding: 13px 16px; }
   .table-row > :nth-child(3), .table-row > :nth-child(4) { display: none; }
+  .requirement-row { grid-template-columns: 42px 1fr; }
+  .requirement-row > :nth-child(3), .requirement-row > :nth-child(4) { display: block; grid-column: 2; }
+  .requirement-row .row-actions { grid-column: 1 / -1; justify-content: flex-start; }
   .detail-panel { padding: 18px 16px; }
   .detail-grid { grid-template-columns: 1fr; gap: 12px; }
   .modal-backdrop { align-items: end; padding: 12px; }

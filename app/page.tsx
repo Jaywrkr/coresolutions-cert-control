@@ -22,6 +22,14 @@ type BrandSummary = {
   status: "Cumplido" | "En riesgo" | "Pendiente";
 };
 
+type RequirementCoverage = {
+  achieved: number;
+  covered: number;
+  required: number;
+  gap: number;
+  compliance: number;
+};
+
 export default function Home() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -547,18 +555,37 @@ export default function Home() {
     setMessage("Esta certificación no tiene un PDF ni enlace de respaldo.");
   }
 
+  function isRecordCurrent(record: CertificationRecord) {
+    if (record.status !== "active" && record.status !== "expiring") return false;
+    if (!record.expires_at) return true;
+    const today = new Date();
+    const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    return record.expires_at >= localToday;
+  }
+
+  function getRequirementCoverage(requirement: Requirement): RequirementCoverage {
+    const qualifyingRecords = records.filter((record) => record.certification_id === requirement.certification_id && isRecordCurrent(record));
+    const achieved = requirement.distinct_people_required
+      ? new Set(qualifyingRecords.map((record) => record.technician_id)).size
+      : qualifyingRecords.length;
+    const covered = Math.min(achieved, requirement.required_count);
+    const gap = Math.max(requirement.required_count - covered, 0);
+    const compliance = requirement.required_count === 0 ? 0 : Math.round((covered / requirement.required_count) * 100);
+    return { achieved, covered, required: requirement.required_count, gap, compliance };
+  }
+
+  function getRecordPresentation(record: CertificationRecord) {
+    if (record.status === "pending_validation") return { label: "Pendiente de validar", className: "pendiente" };
+    if (!isRecordCurrent(record)) return { label: "Vencida", className: "pendiente" };
+    if (record.status === "expiring") return { label: "Por vencer", className: "en-riesgo" };
+    return { label: "Vigente", className: "cumplido" };
+  }
+
   const brandSummaries = useMemo<BrandSummary[]>(() => {
     return brands.map((brand) => {
       const brandRequirements = requirements.filter((item) => item.brand_id === brand.id);
       const required = brandRequirements.reduce((sum, item) => sum + item.required_count, 0);
-      const covered = brandRequirements.reduce((sum, requirement) => {
-        const validPeople = new Set(
-          records
-            .filter((record) => record.certification_id === requirement.certification_id && record.status === "active")
-            .map((record) => record.technician_id),
-        ).size;
-        return sum + Math.min(validPeople, requirement.required_count);
-      }, 0);
+      const covered = brandRequirements.reduce((sum, requirement) => sum + getRequirementCoverage(requirement).covered, 0);
       const compliance = required === 0 ? 0 : Math.round((covered / required) * 100);
       const status: BrandSummary["status"] = compliance === 100 ? "Cumplido" : compliance > 0 ? "En riesgo" : "Pendiente";
       return { id: brand.id, name: brand.name, internal_owner: brand.internal_owner, required, covered, compliance, status };
@@ -586,6 +613,7 @@ export default function Home() {
   const selectedTechnician = technicians.find((technician) => technician.id === selectedTechnicianId) ?? null;
   const selectedCertification = certifications.find((certification) => certification.id === selectedCertificationId) ?? null;
   const selectedRequirement = requirements.find((requirement) => requirement.id === selectedRequirementId) ?? null;
+  const selectedCertificationRequirement = selectedCertification ? requirements.find((requirement) => requirement.certification_id === selectedCertification.id) ?? null : null;
   const visibleBrandSummaries = brandSummaries.filter((brand) => brand.name.toLocaleLowerCase().includes(normalizedQuery));
   const visibleTechnicians = technicians.filter((technician) => technician.full_name.toLocaleLowerCase().includes(normalizedQuery));
   const visibleRequirements = requirements.filter((requirement) => {
@@ -705,7 +733,7 @@ export default function Home() {
               {visibleBrandSummaries.map((brand) => (
                 <button className="brand-row row-button" key={brand.id} onClick={() => showSection("requirements", { query: brand.name })}>
                   <div className="brand-logo">{brand.name.slice(0, 2).toUpperCase()}</div>
-                  <div className="brand-info"><strong>{brand.name}</strong><span>{brand.required === 0 ? "Sin requisitos cargados" : `${Math.max(brand.required - brand.covered, 0)} cupos pendientes`}</span></div>
+                  <div className="brand-info"><strong>{brand.name}</strong><span>{brand.required === 0 ? "Sin requisitos cargados" : brand.covered === brand.required ? "Requisitos cubiertos" : `${Math.max(brand.required - brand.covered, 0)} cupos pendientes`}</span></div>
                   <div className="requirement-count"><span>Cobertura</span><strong>{brand.covered} de {brand.required}</strong></div>
                   <div className="progress-wrap"><div><span style={{ width: `${brand.compliance}%` }}/></div><b>{brand.compliance}%</b></div>
                   <span className={`status ${brand.status.toLowerCase().replace(" ", "-")}`}>{brand.status}</span>
@@ -734,7 +762,7 @@ export default function Home() {
           <div className="panel-heading"><div><span className="kicker">CATÁLOGO</span><h2>Marcas</h2></div><span className="result-count">{visibleBrandSummaries.length} resultados</span></div>
           <div className="table-list">
             {visibleBrandSummaries.map((brand) => <article className={`table-row draggable-row ${selectedBrandId === brand.id ? "selected-row" : ""}`} key={brand.id} draggable={canManage} onClick={() => setSelectedBrandId(brand.id)} onDragStart={(event) => handleBrandDragStart(event, brand.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => handleBrandDrop(event, brand.id)} onDragEnd={() => setDraggedBrandId(null)}>
-              <div className="brand-logo">{canManage ? <GripVertical size={18} /> : brand.name.slice(0, 2).toUpperCase()}</div><div><strong>{brand.name}</strong><span>{brand.internal_owner ?? "Sin responsable"}</span></div><span className={`status ${brand.status.toLowerCase().replace(" ", "-")}`}>{brand.status}</span><span>{brand.covered} de {brand.required} cupos</span>{canManage ? <div className="row-actions reorder-actions"><button aria-label={`Subir ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === 0} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, -1); }}><ArrowUp size={15}/></button><button aria-label={`Bajar ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === brands.length - 1} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, 1); }}><ArrowDown size={15}/></button><button onClick={(event) => { event.stopPropagation(); editBrand(brands.find((item) => item.id === brand.id)!); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); removeBrand(brands.find((item) => item.id === brand.id)!); }}>Eliminar</button></div> : <button className="text-button" onClick={(event) => { event.stopPropagation(); showSection("requirements", { query: brand.name }); }}>Ver requisitos</button>}
+              <div className="brand-logo">{canManage ? <GripVertical size={18} /> : brand.name.slice(0, 2).toUpperCase()}</div><div><strong>{brand.name}</strong><span>{brand.internal_owner ?? "Sin responsable"}</span></div><span className={`status ${brand.status.toLowerCase().replace(" ", "-")}`}>{brand.status}</span><span>{brand.required > 0 ? `${brand.covered} de ${brand.required} cubiertos` : "Sin requisitos"}</span>{canManage ? <div className="row-actions reorder-actions"><button aria-label={`Subir ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === 0} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, -1); }}><ArrowUp size={15}/></button><button aria-label={`Bajar ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === brands.length - 1} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, 1); }}><ArrowDown size={15}/></button><button onClick={(event) => { event.stopPropagation(); editBrand(brands.find((item) => item.id === brand.id)!); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); removeBrand(brands.find((item) => item.id === brand.id)!); }}>Eliminar</button></div> : <button className="text-button" onClick={(event) => { event.stopPropagation(); showSection("requirements", { query: brand.name }); }}>Ver requisitos</button>}
             </article>)}
             {visibleBrandSummaries.length === 0 && <p className="empty-state">No hay marcas que coincidan con la búsqueda.</p>}
           </div>
@@ -747,7 +775,7 @@ export default function Home() {
 
         {activeSection === "technicians" && selectedTechnician && <section className="detail-panel">
           <div className="detail-heading"><div><span className="kicker">TÉCNICO SELECCIONADO</span><h2>{selectedTechnician.full_name}</h2></div><button className="text-button" onClick={() => setSelectedTechnicianId(null)}>Cerrar ficha</button></div>
-          <div className="detail-grid"><div><span>Estado</span><strong>{selectedTechnician.status}</strong></div><div><span>Correo</span><strong>{selectedTechnician.email ?? "Sin correo"}</strong></div><div><span>Cargo</span><strong>{selectedTechnician.job_title ?? "Sin cargo"}</strong></div><div><span>Área</span><strong>{selectedTechnician.area ?? "Sin área"}</strong></div><div><span>Certificaciones</span><strong>{records.filter((record) => record.technician_id === selectedTechnician.id).length}</strong></div><div><span>Responsable</span><strong>{selectedTechnician.manager_name ?? "Sin asignar"}</strong></div></div>
+          <div className="detail-grid"><div><span>Estado</span><strong>{selectedTechnician.status}</strong></div><div><span>Correo</span><strong>{selectedTechnician.email ?? "Sin correo"}</strong></div><div><span>Cargo</span><strong>{selectedTechnician.job_title ?? "Sin cargo"}</strong></div><div><span>Área</span><strong>{selectedTechnician.area ?? "Sin área"}</strong></div><div><span>Certificaciones vigentes</span><strong>{records.filter((record) => record.technician_id === selectedTechnician.id && isRecordCurrent(record)).length} de {records.filter((record) => record.technician_id === selectedTechnician.id).length} registradas</strong></div><div><span>Responsable</span><strong>{selectedTechnician.manager_name ?? "Sin asignar"}</strong></div></div>
         </section>}
 
         {activeSection === "technicians" && <section className="panel data-panel">
@@ -770,7 +798,7 @@ export default function Home() {
 
         {activeSection === "certifications" && selectedCertification && <section className="detail-panel">
           <div className="detail-heading"><div><span className="kicker">CERTIFICACIÓN SELECCIONADA</span><h2>{selectedCertification.name}</h2></div><button className="text-button" onClick={() => setSelectedCertificationId(null)}>Cerrar ficha</button></div>
-          <div className="detail-grid"><div><span>Marca</span><strong>{brandNameById.get(selectedCertification.brand_id) ?? "Sin marca"}</strong></div><div><span>Código</span><strong>{selectedCertification.code ?? "Sin código"}</strong></div><div><span>Tipo</span><strong>{selectedCertification.certification_type}</strong></div><div><span>Estado</span><strong>{selectedCertification.status}</strong></div><div><span>Técnicos certificados</span><strong>{new Set(records.filter((record) => record.certification_id === selectedCertification.id).map((record) => record.technician_id)).size}</strong></div><div><span>Requisitos asociados</span><strong>{requirements.filter((requirement) => requirement.certification_id === selectedCertification.id).length}</strong></div><div><span>Observaciones</span><strong>{selectedCertification.notes ?? "Sin observaciones"}</strong></div></div>
+          <div className="detail-grid"><div><span>Marca</span><strong>{brandNameById.get(selectedCertification.brand_id) ?? "Sin marca"}</strong></div><div><span>Código</span><strong>{selectedCertification.code ?? "Sin código"}</strong></div><div><span>Tipo</span><strong>{selectedCertification.certification_type}</strong></div><div><span>Estado</span><strong>{selectedCertification.status}</strong></div><div><span>Cobertura del requisito</span><strong>{selectedCertificationRequirement ? `${getRequirementCoverage(selectedCertificationRequirement).achieved} de ${getRequirementCoverage(selectedCertificationRequirement).required} cubiertos` : "Sin requisito asociado"}</strong></div><div><span>Certificaciones vigentes</span><strong>{records.filter((record) => record.certification_id === selectedCertification.id && isRecordCurrent(record)).length}</strong></div><div><span>Observaciones</span><strong>{selectedCertification.notes ?? "Sin observaciones"}</strong></div></div>
         </section>}
 
         {activeSection === "certifications" && <section className="panel data-panel">
@@ -785,7 +813,7 @@ export default function Home() {
               <div className="panel-heading"><span className="kicker">ASIGNACIONES</span><strong>{visibleRecords.length} certificaciones de técnicos</strong></div>
             </>}
             {visibleRecords.map((record) => <article className={`table-row selectable-row ${selectedCertificationId === record.certification_id ? "selected-row" : ""}`} key={record.id} onClick={() => setSelectedCertificationId(record.certification_id)}>
-              <div className="brand-logo"><Award size={18}/></div><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>{certificationById.get(record.certification_id)?.name ?? record.certification_id}</span>{!record.evidence_path && <span className="missing-pdf" title="Sin PDF adjunto"><FileWarning size={13} aria-hidden="true" />Sin PDF</span>}</div><span className={`status ${record.status === "active" ? "cumplido" : "pendiente"}`}>{record.status}</span><span>Vence: {formatDate(record.expires_at)}</span>{canManage ? <div className="row-actions"><button onClick={() => editTechnicianCertification(record)}>Editar</button><button onClick={() => deleteTechnicianCertification(record)}>Eliminar</button></div> : <span />}
+              <div className="brand-logo"><Award size={18}/></div><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>{certificationById.get(record.certification_id)?.name ?? record.certification_id}</span>{!record.evidence_path && <span className="missing-pdf" title="Sin PDF adjunto"><FileWarning size={13} aria-hidden="true" />Sin PDF</span>}</div><span className={`status ${getRecordPresentation(record).className}`}>{getRecordPresentation(record).label}</span><span>Vence: {formatDate(record.expires_at)}</span>{canManage ? <div className="row-actions"><button onClick={() => editTechnicianCertification(record)}>Editar</button><button onClick={() => deleteTechnicianCertification(record)}>Eliminar</button></div> : <span />}
             </article>)}
             {visibleRecords.length === 0 && <p className="empty-state">No hay certificaciones que coincidan con los filtros actuales.</p>}
           </div>
@@ -798,14 +826,14 @@ export default function Home() {
 
         {activeSection === "requirements" && selectedRequirement && <section className="detail-panel">
           <div className="detail-heading"><div><span className="kicker">REQUISITO SELECCIONADO</span><h2>{brandNameById.get(selectedRequirement.brand_id) ?? "Marca sin identificar"}</h2></div><button className="text-button" onClick={() => setSelectedRequirementId(null)}>Cerrar ficha</button></div>
-          <div className="detail-grid"><div><span>Certificación</span><strong>{certificationById.get(selectedRequirement.certification_id)?.name ?? "Sin identificar"}</strong></div><div><span>Cupos requeridos</span><strong>{selectedRequirement.required_count}</strong></div><div><span>Cubiertos</span><strong>{new Set(records.filter((record) => record.certification_id === selectedRequirement.certification_id && record.status === "active").map((record) => record.technician_id)).size}</strong></div><div><span>Obligatorio</span><strong>{selectedRequirement.mandatory ? "Sí" : "No"}</strong></div><div><span>Técnicos distintos</span><strong>{selectedRequirement.distinct_people_required ? "Sí" : "No"}</strong></div><div><span>Vigencia</span><strong>{formatDate(selectedRequirement.effective_from)} - {formatDate(selectedRequirement.effective_until)}</strong></div></div>
+          <div className="detail-grid"><div><span>Certificación</span><strong>{certificationById.get(selectedRequirement.certification_id)?.name ?? "Sin identificar"}</strong></div><div><span>Cobertura</span><strong>{getRequirementCoverage(selectedRequirement).achieved} de {getRequirementCoverage(selectedRequirement).required} cupos cubiertos</strong></div><div><span>Brecha pendiente</span><strong>{getRequirementCoverage(selectedRequirement).gap === 0 ? "Requisito cubierto" : `${getRequirementCoverage(selectedRequirement).gap} cupos pendientes`}</strong></div><div><span>Obligatorio</span><strong>{selectedRequirement.mandatory ? "Sí" : "No"}</strong></div><div><span>Criterio de conteo</span><strong>{selectedRequirement.distinct_people_required ? "Técnicos distintos" : "Certificaciones vigentes"}</strong></div><div><span>Vigencia</span><strong>{formatDate(selectedRequirement.effective_from)} - {formatDate(selectedRequirement.effective_until)}</strong></div></div>
         </section>}
 
         {activeSection === "requirements" && <section className="panel data-panel">
           <div className="panel-heading"><div><span className="kicker">COBERTURA</span><h2>Requisitos</h2></div><button className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button></div>
           <div className="table-list">
-            {visibleRequirements.map((requirement) => <article className={`table-row selectable-row ${selectedRequirementId === requirement.id ? "selected-row" : ""}`} key={requirement.id} onClick={() => setSelectedRequirementId(requirement.id)}>
-              <div className="brand-logo"><FileCheck2 size={18}/></div><div><strong>{brandNameById.get(requirement.brand_id) ?? "Marca sin identificar"}</strong><span>{certificationById.get(requirement.certification_id)?.name ?? requirement.certification_id}</span></div><span>{requirement.required_count} cupos requeridos</span><span>{new Set(records.filter((record) => record.certification_id === requirement.certification_id && record.status === "active").map((record) => record.technician_id)).size} cubiertos</span>{canManage ? <div className="row-actions"><button onClick={() => editFullRequirement(requirement)}>Editar</button><button onClick={() => deleteRequirement(requirement)}>Eliminar</button></div> : <span />}
+            {visibleRequirements.map((requirement) => <article className={`table-row requirement-row selectable-row ${selectedRequirementId === requirement.id ? "selected-row" : ""}`} key={requirement.id} onClick={() => setSelectedRequirementId(requirement.id)}>
+              <div className="brand-logo"><FileCheck2 size={18}/></div><div><strong>{brandNameById.get(requirement.brand_id) ?? "Marca sin identificar"}</strong><span>{certificationById.get(requirement.certification_id)?.name ?? requirement.certification_id}</span></div><div className="coverage-cell"><span>Cobertura</span><strong>{getRequirementCoverage(requirement).achieved} de {getRequirementCoverage(requirement).required} cubiertos</strong></div><div className="coverage-cell"><span>{getRequirementCoverage(requirement).gap === 0 ? "Estado" : "Pendiente"}</span><strong>{getRequirementCoverage(requirement).gap === 0 ? "Requisito cubierto" : `${getRequirementCoverage(requirement).gap} cupos`}</strong></div>{canManage ? <div className="row-actions"><button onClick={() => editFullRequirement(requirement)}>Editar</button><button onClick={() => deleteRequirement(requirement)}>Eliminar</button></div> : <span />}
             </article>)}
             {visibleRequirements.length === 0 && <p className="empty-state">No hay requisitos que coincidan con la búsqueda.</p>}
           </div>
@@ -818,7 +846,7 @@ export default function Home() {
           <div className="detail-grid modal-summary"><div><span>Estado</span><strong>{selectedBrand.status}</strong></div><div><span>Cobertura</span><strong>{selectedBrandSummary.covered} de {selectedBrandSummary.required} cupos</strong></div><div><span>Cumplimiento</span><strong>{selectedBrandSummary.compliance}%</strong></div><div><span>Certificaciones</span><strong>{certifications.filter((certification) => certification.brand_id === selectedBrand.id).length}</strong></div><div><span>Requisitos</span><strong>{requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).length}</strong></div><div><span>Notas</span><strong>{selectedBrand.notes ?? "Sin notas"}</strong></div></div>
 
           <div className="modal-section"><div><span className="kicker">REQUISITOS DE {selectedBrand.name.toUpperCase()}</span><h3>Requisitos de certificación</h3></div>
-            {requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).length > 0 ? <div className="brand-requirements">{requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).map((requirement) => <button type="button" key={requirement.id} onClick={() => setSelectedCertificationId(requirement.certification_id)}><strong>{certificationById.get(requirement.certification_id)?.name ?? "Certificación sin identificar"}</strong><span>{requirement.required_count} cupos requeridos</span></button>)}</div> : <p className="modal-empty">Aún no hay requisitos registrados para esta marca.</p>}
+            {requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).length > 0 ? <div className="brand-requirements">{requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).map((requirement) => <button type="button" key={requirement.id} onClick={() => setSelectedCertificationId(requirement.certification_id)}><strong>{certificationById.get(requirement.certification_id)?.name ?? "Certificación sin identificar"}</strong><span>{getRequirementCoverage(requirement).achieved} de {getRequirementCoverage(requirement).required} cubiertos · {getRequirementCoverage(requirement).compliance}%</span></button>)}</div> : <p className="modal-empty">Aún no hay requisitos registrados para esta marca.</p>}
           </div>
 
           {canManage && <div className="modal-section modal-form-section"><details><summary>Agregar requisito a {selectedBrand.name}</summary><form onSubmit={handleAddRequirement} className="inline-form"><input type="hidden" name="brand_id" value={selectedBrand.id} /><input name="certification_name" placeholder="Nombre de certificación" required /><input name="required_count" type="number" min="1" defaultValue="1" title="Cantidad requerida" required /><button>Guardar requisito</button></form></details></div>}
@@ -828,10 +856,10 @@ export default function Home() {
       {activeSection === "brands" && selectedBrand && selectedCertification && selectedCertification.brand_id === selectedBrand.id && <div className="modal-backdrop certificate-modal-backdrop" role="presentation" onMouseDown={() => setSelectedCertificationId(null)}>
         <section className="entity-modal certificate-modal" role="dialog" aria-modal="true" aria-labelledby="certification-modal-title" onMouseDown={(event) => event.stopPropagation()}>
           <div className="modal-heading"><div><span className="kicker">CERTIFICACIÓN · {selectedBrand.name.toUpperCase()}</span><h2 id="certification-modal-title">{selectedCertification.name}</h2><p>{selectedCertification.code ?? "Sin código"} · {selectedCertification.certification_type}</p></div><button className="modal-close" onClick={() => setSelectedCertificationId(null)}>Volver a {selectedBrand.name}</button></div>
-          <div className="detail-grid modal-summary"><div><span>Cupos requeridos</span><strong>{requirements.find((requirement) => requirement.brand_id === selectedBrand.id && requirement.certification_id === selectedCertification.id)?.required_count ?? 0}</strong></div><div><span>Técnicos certificados</span><strong>{new Set(records.filter((record) => record.certification_id === selectedCertification.id && record.status === "active").map((record) => record.technician_id)).size}</strong></div><div><span>Vigencia</span><strong>{selectedCertification.validity_months ? `${selectedCertification.validity_months} meses` : "No definida"}</strong></div></div>
+          <div className="detail-grid modal-summary"><div><span>Cobertura</span><strong>{selectedCertificationRequirement ? `${getRequirementCoverage(selectedCertificationRequirement).achieved} de ${getRequirementCoverage(selectedCertificationRequirement).required} cupos cubiertos` : "Sin requisito asociado"}</strong></div><div><span>Brecha pendiente</span><strong>{selectedCertificationRequirement ? getRequirementCoverage(selectedCertificationRequirement).gap === 0 ? "Requisito cubierto" : `${getRequirementCoverage(selectedCertificationRequirement).gap} cupos pendientes` : "No aplica"}</strong></div><div><span>Vigencia</span><strong>{selectedCertification.validity_months ? `${selectedCertification.validity_months} meses` : "No definida"}</strong></div></div>
 
           <div className="modal-section"><div><span className="kicker">EJECUCIÓN</span><h3>Certificaciones realizadas</h3></div>
-            {records.filter((record) => record.certification_id === selectedCertification.id).length > 0 ? <div className="certificate-assignments">{records.filter((record) => record.certification_id === selectedCertification.id).map((record) => <div key={record.id}><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>Emitida: {formatDate(record.issued_at)} · Vence: {formatDate(record.expires_at)}</span>{record.certificate_number && <span>N.º {record.certificate_number}</span>}{record.notes && <span className="assignment-note">{record.notes}</span>}</div><div className="assignment-actions">{!record.evidence_path && <span className="missing-pdf" title="Sin PDF adjunto"><FileWarning size={14} aria-hidden="true" />Sin PDF adjunto</span>}{(record.evidence_path || record.verification_url) && <button type="button" className="text-button" onClick={() => openCertificateEvidence(record)}>Ver respaldo</button>}{canManage && <button type="button" className="text-button" onClick={() => editTechnicianCertification(record)}>Editar</button>}</div></div>)}</div> : <p className="modal-empty">Todavía no hay técnicos registrados con esta certificación.</p>}
+            {records.filter((record) => record.certification_id === selectedCertification.id).length > 0 ? <div className="certificate-assignments">{records.filter((record) => record.certification_id === selectedCertification.id).map((record) => <div key={record.id}><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>Emitida: {formatDate(record.issued_at)} · Vence: {formatDate(record.expires_at)}</span>{record.certificate_number && <span>N.º {record.certificate_number}</span>}{record.notes && <span className="assignment-note">{record.notes}</span>}</div><div className="assignment-actions"><span className={`status ${getRecordPresentation(record).className}`}>{getRecordPresentation(record).label}</span>{!record.evidence_path && <span className="missing-pdf" title="Sin PDF adjunto"><FileWarning size={14} aria-hidden="true" />Sin PDF adjunto</span>}{(record.evidence_path || record.verification_url) && <button type="button" className="text-button" onClick={() => openCertificateEvidence(record)}>Ver respaldo</button>}{canManage && <button type="button" className="text-button" onClick={() => editTechnicianCertification(record)}>Editar</button>}</div></div>)}</div> : <p className="modal-empty">Todavía no hay técnicos registrados con esta certificación.</p>}
           </div>
 
           {canManage && <div className="modal-section modal-form-section"><details><summary>Registrar certificación completada</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><input type="hidden" name="certification_id" value={selectedCertification.id} /><input type="hidden" name="status" value="active" /><select name="technician_id" required><option value="">Técnico certificado</option>{technicians.filter((technician) => technician.status === "active").map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><input name="issued_at" placeholder="Emisión MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxLength={10} required /><input name="expires_at" placeholder="Vencimiento MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxLength={10} /><input name="certificate_number" placeholder="N.º de certificado" /><input name="notes" placeholder="Observación o información extra" /><input name="certificate_file" type="file" accept="application/pdf" title="PDF del certificado" /><button>Registrar completada</button></form></details></div>}
