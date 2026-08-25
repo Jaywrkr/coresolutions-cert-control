@@ -57,6 +57,24 @@ export default function Home() {
   const [editingCertificationRecord, setEditingCertificationRecord] = useState<CertificationRecord | null>(null);
 
   useEffect(() => {
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      if (searchQuery) setSearchQuery("");
+      else if (editingCertificationRecord) setEditingCertificationRecord(null);
+      else if (editingRequirement) setEditingRequirement(null);
+      else if (editingCatalogCertification) setEditingCatalogCertification(null);
+      else if (editingTechnician) setEditingTechnician(null);
+      else if (editingBrand) setEditingBrand(null);
+      else if (selectedCertificationId) setSelectedCertificationId(null);
+      else if (selectedBrandId) setSelectedBrandId(null);
+      else if (selectedTechnicianId) setSelectedTechnicianId(null);
+      else if (selectedRequirementId) setSelectedRequirementId(null);
+    }
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [editingBrand, editingCatalogCertification, editingCertificationRecord, editingRequirement, editingTechnician, searchQuery, selectedBrandId, selectedCertificationId, selectedRequirementId, selectedTechnicianId]);
+
+  useEffect(() => {
     let supabase;
     try {
       supabase = getSupabaseClient();
@@ -200,12 +218,13 @@ export default function Home() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const name = String(form.get("name") ?? "").trim();
+    if (!name) { setMessage("El nombre de la marca es obligatorio."); return; }
     const result = await getSupabaseClient().from("brands").insert({
       name,
       slug: slugify(name),
       internal_owner: asOptionalText(form.get("internal_owner")),
       notes: asOptionalText(form.get("notes")),
-      status: "active",
+      status: String(form.get("status") || "active"),
       sort_order: brands.length + 1,
     });
     if (result.error) setMessage(result.error.message);
@@ -259,17 +278,19 @@ export default function Home() {
   async function handleAddTechnician(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const fullName = String(form.get("full_name") ?? "").trim();
+    if (!fullName) { setMessage("El nombre del técnico es obligatorio."); return; }
     let startDate: string | null;
     try { startDate = parseDateInput(form.get("start_date"), "La fecha de ingreso"); } catch (error) { setMessage(error instanceof Error ? error.message : "Fecha inválida."); return; }
     const result = await getSupabaseClient().from("technicians").insert({
-      full_name: String(form.get("full_name") ?? "").trim(),
+      full_name: fullName,
       email: asOptionalText(form.get("email")),
       job_title: asOptionalText(form.get("job_title")),
       area: asOptionalText(form.get("area")),
       start_date: startDate,
       manager_name: asOptionalText(form.get("manager_name")),
       notes: asOptionalText(form.get("notes")),
-      status: "active",
+      status: String(form.get("status") || "active"),
     });
     if (result.error) setMessage(result.error.message);
     else { event.currentTarget.reset(); setMessage("Técnico agregado."); await loadDashboard(); }
@@ -278,12 +299,23 @@ export default function Home() {
   async function handleAddCatalogCertification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const validityValue = String(form.get("validity_months") ?? "").trim();
+    const validityMonths = validityValue ? Number(validityValue) : null;
+    if (!name || (validityMonths !== null && (!Number.isInteger(validityMonths) || validityMonths < 1))) {
+      setMessage("Revisa el nombre y la vigencia de la certificación.");
+      return;
+    }
     const result = await getSupabaseClient().from("certification_catalog").insert({
       brand_id: String(form.get("brand_id")),
-      name: String(form.get("name")).trim(),
+      name,
       code: String(form.get("code") ?? "").trim() || null,
+      certification_type: String(form.get("certification_type") || "technical"),
+      level: asOptionalText(form.get("level")),
+      validity_months: validityMonths,
+      official_url: asOptionalText(form.get("official_url")),
       notes: asOptionalText(form.get("notes")),
-      status: "active",
+      status: String(form.get("status") || "active"),
     });
     if (result.error) setMessage(result.error.message);
     else { event.currentTarget.reset(); setMessage("Certificación agregada al catálogo."); await loadDashboard(); }
@@ -355,6 +387,16 @@ export default function Home() {
       setMessage("La cantidad debe ser un entero mayor que cero.");
       return;
     }
+    let effectiveFrom: string | null;
+    let effectiveUntil: string | null;
+    try {
+      effectiveFrom = parseDateInput(form.get("effective_from"), "La vigencia desde");
+      effectiveUntil = parseDateInput(form.get("effective_until"), "La vigencia hasta");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Fecha inválida."); return; }
+    if (effectiveFrom && effectiveUntil && effectiveUntil < effectiveFrom) {
+      setMessage("La vigencia hasta no puede ser anterior a la vigencia desde.");
+      return;
+    }
     const supabase = getSupabaseClient();
     const catalogLookup = await supabase.from("certification_catalog").select("id").eq("brand_id", brandId).eq("name", certificationName).maybeSingle();
     if (catalogLookup.error) { setMessage(catalogLookup.error.message); return; }
@@ -376,9 +418,17 @@ export default function Home() {
     const requirementLookup = await supabase.from("brand_requirements").select("id").eq("brand_id", brandId).eq("certification_id", certificationId).maybeSingle();
     if (requirementLookup.error) { setMessage(requirementLookup.error.message); return; }
     const existingRequirement = requirementLookup.data;
+    const requirementData = {
+      required_count: requiredCount,
+      distinct_people_required: form.get("distinct_people_required") === "on",
+      mandatory: form.get("mandatory") === "on",
+      effective_from: effectiveFrom,
+      effective_until: effectiveUntil,
+      notes: asOptionalText(form.get("notes")),
+    };
     const result = existingRequirement
-      ? await supabase.from("brand_requirements").update({ required_count: requiredCount }).eq("id", existingRequirement.id)
-      : await supabase.from("brand_requirements").insert({ brand_id: brandId, certification_id: certificationId, required_count: requiredCount });
+      ? await supabase.from("brand_requirements").update(requirementData).eq("id", existingRequirement.id)
+      : await supabase.from("brand_requirements").insert({ brand_id: brandId, certification_id: certificationId, ...requirementData });
     if (result.error) setMessage(result.error.message);
     else { event.currentTarget.reset(); setMessage(existingRequirement ? "Cantidad del requisito actualizada." : "Requisito guardado."); await loadDashboard(); }
   }
@@ -395,6 +445,7 @@ export default function Home() {
       issuedAt = parseDateInput(form.get("issued_at"), "La fecha de emisión");
       expiresAt = parseDateInput(form.get("expires_at"), "La fecha de vencimiento");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Fecha inválida."); return; }
+    if (issuedAt && expiresAt && expiresAt < issuedAt) { setMessage("La fecha de vencimiento no puede ser anterior a la fecha de emisión."); return; }
     const supabase = getSupabaseClient();
     const evidenceFile = form.get("certificate_file");
     let evidencePath: string | null = null;
@@ -496,6 +547,7 @@ export default function Home() {
       effectiveFrom = parseDateInput(form.get("effective_from"), "La vigencia desde");
       effectiveUntil = parseDateInput(form.get("effective_until"), "La vigencia hasta");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Fecha inválida."); return; }
+    if (effectiveFrom && effectiveUntil && effectiveUntil < effectiveFrom) { setMessage("La vigencia hasta no puede ser anterior a la vigencia desde."); return; }
     const result = await getSupabaseClient().from("brand_requirements").update({ brand_id: brandId, certification_id: certification.id, required_count: requiredCount, distinct_people_required: form.get("distinct_people_required") === "on", mandatory: form.get("mandatory") === "on", effective_from: effectiveFrom, effective_until: effectiveUntil, notes: asOptionalText(form.get("notes")) }).eq("id", editingRequirement.id);
     if (result.error) setMessage(result.error.message); else { setEditingRequirement(null); setMessage("Requisito actualizado."); await loadDashboard(); }
   }
@@ -512,6 +564,7 @@ export default function Home() {
       issuedAt = parseDateInput(form.get("issued_at"), "La fecha de emisión");
       expiresAt = parseDateInput(form.get("expires_at"), "La fecha de vencimiento");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Fecha inválida."); return; }
+    if (issuedAt && expiresAt && expiresAt < issuedAt) { setMessage("La fecha de vencimiento no puede ser anterior a la fecha de emisión."); return; }
     const supabase = getSupabaseClient();
     const evidenceFile = form.get("certificate_file");
     let evidencePath = editingCertificationRecord.evidence_path;
@@ -551,8 +604,26 @@ export default function Home() {
       window.open(signedFile.data.signedUrl, "_blank", "noopener,noreferrer");
       return;
     }
-    if (record.verification_url) { window.open(record.verification_url, "_blank", "noopener,noreferrer"); return; }
+    if (record.verification_url) {
+      const url = getSafeExternalUrl(record.verification_url);
+      if (url) {
+        window.open(url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      setMessage("El enlace de evidencia no es válido. Edítalo para usar una dirección HTTP o HTTPS.");
+      return;
+    }
     setMessage("Esta certificación no tiene un PDF ni enlace de respaldo.");
+  }
+
+  function getSafeExternalUrl(value: string | null) {
+    if (!value) return null;
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+    } catch {
+      return null;
+    }
   }
 
   function isRecordCurrent(record: CertificationRecord) {
@@ -579,6 +650,20 @@ export default function Home() {
     if (!isRecordCurrent(record)) return { label: "Vencida", className: "pendiente" };
     if (record.status === "expiring") return { label: "Por vencer", className: "en-riesgo" };
     return { label: "Vigente", className: "cumplido" };
+  }
+
+  function getEntityStatusPresentation(status: string, feminine = false) {
+    const labels: Record<string, string> = {
+      active: feminine ? "Activa" : "Activo",
+      inactive: feminine ? "Inactiva" : "Inactivo",
+      review: "En revisión",
+      leave: "Ausente",
+      retired: "Retirada",
+    };
+    return {
+      label: labels[status] ?? status,
+      className: status === "active" ? "cumplido" : status === "review" || status === "leave" ? "en-riesgo" : "pendiente",
+    };
   }
 
   const brandSummaries = useMemo<BrandSummary[]>(() => {
@@ -614,11 +699,12 @@ export default function Home() {
   const selectedCertification = certifications.find((certification) => certification.id === selectedCertificationId) ?? null;
   const selectedRequirement = requirements.find((requirement) => requirement.id === selectedRequirementId) ?? null;
   const selectedCertificationRequirement = selectedCertification ? requirements.find((requirement) => requirement.certification_id === selectedCertification.id) ?? null : null;
-  const visibleBrandSummaries = brandSummaries.filter((brand) => brand.name.toLocaleLowerCase().includes(normalizedQuery));
-  const visibleTechnicians = technicians.filter((technician) => technician.full_name.toLocaleLowerCase().includes(normalizedQuery));
+  const visibleBrandSummaries = brandSummaries.filter((brand) => `${brand.name} ${brand.internal_owner ?? ""}`.toLocaleLowerCase().includes(normalizedQuery));
+  const visibleTechnicians = technicians.filter((technician) => `${technician.full_name} ${technician.email ?? ""} ${technician.job_title ?? ""} ${technician.area ?? ""} ${technician.manager_name ?? ""}`.toLocaleLowerCase().includes(normalizedQuery));
   const visibleRequirements = requirements.filter((requirement) => {
     const brandName = brandNameById.get(requirement.brand_id) ?? requirement.brand_id;
-    return `${brandName} ${requirement.certification_id}`.toLocaleLowerCase().includes(normalizedQuery);
+    const certification = certificationById.get(requirement.certification_id);
+    return `${brandName} ${certification?.name ?? ""} ${certification?.code ?? ""} ${requirement.notes ?? ""}`.toLocaleLowerCase().includes(normalizedQuery);
   });
   const visibleCatalog = certifications.filter((certification) => {
     const brandName = brandNameById.get(certification.brand_id) ?? certification.brand_id;
@@ -627,7 +713,7 @@ export default function Home() {
   const visibleRecords = records.filter((record) => {
     const technicianName = technicianNameById.get(record.technician_id) ?? record.technician_id;
     const certificationName = certificationById.get(record.certification_id)?.name ?? record.certification_id;
-    const matchesSearch = `${technicianName} ${certificationName} ${record.status}`.toLocaleLowerCase().includes(normalizedQuery);
+    const matchesSearch = `${technicianName} ${certificationName} ${record.status} ${record.certificate_number ?? ""} ${record.notes ?? ""}`.toLocaleLowerCase().includes(normalizedQuery);
     if (!matchesSearch) return false;
     if (!showExpiringOnly) return true;
     if (!record.expires_at) return false;
@@ -642,14 +728,34 @@ export default function Home() {
     requirements: "Requisitos",
   };
 
-  function showSection(section: Section, options?: { query?: string; expiring?: boolean }) {
+  function showSection(section: Section, options?: { expiring?: boolean }) {
     setActiveSection(section);
     setShowExpiringOnly(options?.expiring ?? false);
     setSelectedBrandId(null);
     setSelectedTechnicianId(null);
     setSelectedCertificationId(null);
     setSelectedRequirementId(null);
-    if (options?.query !== undefined) setSearchQuery(options.query);
+    setSearchQuery("");
+  }
+
+  function openBrand(brandId: string) {
+    setActiveSection("brands");
+    setShowExpiringOnly(false);
+    setSearchQuery("");
+    setSelectedTechnicianId(null);
+    setSelectedCertificationId(null);
+    setSelectedRequirementId(null);
+    setSelectedBrandId(brandId);
+  }
+
+  function openTechnician(technicianId: string) {
+    setActiveSection("technicians");
+    setShowExpiringOnly(false);
+    setSearchQuery("");
+    setSelectedBrandId(null);
+    setSelectedCertificationId(null);
+    setSelectedRequirementId(null);
+    setSelectedTechnicianId(technicianId);
   }
 
   function formatDate(value: string | null) {
@@ -703,13 +809,13 @@ export default function Home() {
         <header className="topbar">
           <div><p className="eyebrow">CONTROL DE CANAL</p><h1>{sectionTitles[activeSection]}</h1></div>
           <div className="top-actions">
-            <label className="search"><Search size={18}/><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Buscar" aria-label="Buscar en el dashboard" /></label>
+            <div className="search"><Search size={18}/><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={`Buscar en ${sectionTitles[activeSection].toLocaleLowerCase()}`} aria-label={`Buscar en ${sectionTitles[activeSection]}`} />{searchQuery && <button type="button" className="clear-search" onClick={() => setSearchQuery("")} aria-label="Limpiar búsqueda">Limpiar</button>}</div>
             <button className="icon-button" aria-label="Ver alertas" onClick={() => showSection("requirements")}><Bell size={19}/>{openGaps > 0 && <i />}</button>
             <div className="profile-chip"><span>{canManage ? "Administrador" : "Usuario"}</span><div className="avatar">{session.user.email?.slice(0, 2).toUpperCase()}</div></div>
           </div>
         </header>
 
-        {message && <div className="data-message">{message}</div>}
+        {message && <div className="data-message" role="status" aria-live="polite"><span>{message}</span><button type="button" onClick={() => setMessage("")}>Cerrar</button></div>}
 
         {activeSection === "summary" && <>
         <section className="hero-card">
@@ -731,7 +837,7 @@ export default function Home() {
             <div className="panel-heading"><div><span className="kicker">DATOS REALES</span><h2>Cumplimiento por marca</h2></div></div>
             <div className="brand-list">
               {visibleBrandSummaries.map((brand) => (
-                <button className="brand-row row-button" key={brand.id} onClick={() => showSection("requirements", { query: brand.name })}>
+                <button className="brand-row row-button" key={brand.id} onClick={() => openBrand(brand.id)}>
                   <div className="brand-logo">{brand.name.slice(0, 2).toUpperCase()}</div>
                   <div className="brand-info"><strong>{brand.name}</strong><span>{brand.required === 0 ? "Sin requisitos cargados" : brand.covered === brand.required ? "Requisitos cubiertos" : `${Math.max(brand.required - brand.covered, 0)} cupos pendientes`}</span></div>
                   <div className="requirement-count"><span>Cobertura</span><strong>{brand.covered} de {brand.required}</strong></div>
@@ -748,21 +854,21 @@ export default function Home() {
             <div className="alert-list">
               <button className={`alert alert-button ${openGaps > 0 ? "critical" : "neutral"}`} onClick={() => showSection("requirements")}><span className="alert-dot"/><div><strong>Brechas de certificación</strong><p>{openGaps > 0 ? `${openGaps} cupos requeridos todavía no están cubiertos.` : "Todos los requisitos están cubiertos."}</p></div><ChevronRight size={17}/></button>
               <button className={`alert alert-button ${expiringSoon > 0 ? "warning" : "neutral"}`} onClick={() => showSection("certifications", { expiring: true })}><span className="alert-dot"/><div><strong>Próximos vencimientos</strong><p>{expiringSoon} certificados vencen en los próximos 90 días.</p></div><ChevronRight size={17}/></button>
-              <button className="alert alert-button neutral" onClick={() => showSection("summary")}><span className="alert-dot"/><div><strong>Base conectada</strong><p>Los indicadores ya se calculan desde Supabase.</p></div><ChevronRight size={17}/></button>
+              <div className="alert neutral"><span className="alert-dot"/><div><strong>Base conectada</strong><p>Los indicadores se actualizan automáticamente desde Supabase.</p></div></div>
             </div>
           </aside>
         </section>}
 
         {activeSection === "brands" && canManage && <section className="management-panel contextual-management">
           <div><span className="kicker">ADMINISTRACIÓN DE MARCAS</span><h2>Agregar una marca</h2><p>Registra las marcas con su responsable interno y notas de contexto.</p></div>
-          <div className="management-actions"><details><summary>Nueva marca</summary><form onSubmit={handleAddBrand} className="inline-form"><input name="name" placeholder="Nombre de la marca" required /><input name="internal_owner" placeholder="Responsable interno" /><input name="notes" placeholder="Nota (opcional)" /><button>Guardar marca</button></form></details></div>
+          <div className="management-actions"><details><summary>Nueva marca</summary><form onSubmit={handleAddBrand} className="inline-form"><input name="name" placeholder="Nombre de la marca" required /><input name="internal_owner" placeholder="Responsable interno" /><select name="status" defaultValue="active"><option value="active">Activa</option><option value="inactive">Inactiva</option><option value="review">En revisión</option></select><input name="notes" placeholder="Notas u observaciones (opcional)" /><button>Guardar marca</button></form></details></div>
         </section>}
 
         {activeSection === "brands" && <section className="panel data-panel">
           <div className="panel-heading"><div><span className="kicker">CATÁLOGO</span><h2>Marcas</h2></div><span className="result-count">{visibleBrandSummaries.length} resultados</span></div>
           <div className="table-list">
             {visibleBrandSummaries.map((brand) => <article className={`table-row draggable-row ${selectedBrandId === brand.id ? "selected-row" : ""}`} key={brand.id} draggable={canManage} onClick={() => setSelectedBrandId(brand.id)} onDragStart={(event) => handleBrandDragStart(event, brand.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => handleBrandDrop(event, brand.id)} onDragEnd={() => setDraggedBrandId(null)}>
-              <div className="brand-logo">{canManage ? <GripVertical size={18} /> : brand.name.slice(0, 2).toUpperCase()}</div><div><strong>{brand.name}</strong><span>{brand.internal_owner ?? "Sin responsable"}</span></div><span className={`status ${brand.status.toLowerCase().replace(" ", "-")}`}>{brand.status}</span><span>{brand.required > 0 ? `${brand.covered} de ${brand.required} cubiertos` : "Sin requisitos"}</span>{canManage ? <div className="row-actions reorder-actions"><button aria-label={`Subir ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === 0} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, -1); }}><ArrowUp size={15}/></button><button aria-label={`Bajar ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === brands.length - 1} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, 1); }}><ArrowDown size={15}/></button><button onClick={(event) => { event.stopPropagation(); editBrand(brands.find((item) => item.id === brand.id)!); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); removeBrand(brands.find((item) => item.id === brand.id)!); }}>Eliminar</button></div> : <button className="text-button" onClick={(event) => { event.stopPropagation(); showSection("requirements", { query: brand.name }); }}>Ver requisitos</button>}
+              <div className="brand-logo">{canManage ? <GripVertical size={18} /> : brand.name.slice(0, 2).toUpperCase()}</div><div><strong>{brand.name}</strong><span>{brand.internal_owner ?? "Sin responsable"}</span></div><span className={`status ${getEntityStatusPresentation(brand.status, true).className}`}>{getEntityStatusPresentation(brand.status, true).label}</span><span>{brand.required > 0 ? `${brand.covered} de ${brand.required} cubiertos` : "Sin requisitos"}</span>{canManage ? <div className="row-actions reorder-actions"><button aria-label={`Subir ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === 0} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, -1); }}><ArrowUp size={15}/></button><button aria-label={`Bajar ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === brands.length - 1} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, 1); }}><ArrowDown size={15}/></button><button onClick={(event) => { event.stopPropagation(); editBrand(brands.find((item) => item.id === brand.id)!); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); removeBrand(brands.find((item) => item.id === brand.id)!); }}>Eliminar</button></div> : <button className="text-button" onClick={(event) => { event.stopPropagation(); openBrand(brand.id); }}>Abrir marca</button>}
             </article>)}
             {visibleBrandSummaries.length === 0 && <p className="empty-state">No hay marcas que coincidan con la búsqueda.</p>}
           </div>
@@ -770,19 +876,19 @@ export default function Home() {
 
         {activeSection === "technicians" && canManage && <section className="management-panel contextual-management">
           <div><span className="kicker">ADMINISTRACIÓN DE TÉCNICOS</span><h2>Agregar un técnico</h2><p>Registra al personal con sus datos de contacto, cargo, área y responsable.</p></div>
-          <div className="management-actions"><details><summary>Nuevo técnico</summary><form onSubmit={handleAddTechnician} className="inline-form"><input name="full_name" placeholder="Nombre completo" required /><input name="email" type="email" placeholder="Correo (opcional)" /><input name="job_title" placeholder="Cargo (opcional)" /><input name="area" placeholder="Área (opcional)" /><input name="start_date" placeholder="MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" title="Fecha de ingreso (MM/DD/AAAA)" maxLength={10} /><input name="manager_name" placeholder="Responsable (opcional)" /><button>Guardar técnico</button></form></details></div>
+          <div className="management-actions"><details><summary>Nuevo técnico</summary><form onSubmit={handleAddTechnician} className="inline-form"><input name="full_name" placeholder="Nombre completo" required /><input name="email" type="email" placeholder="Correo (opcional)" /><input name="job_title" placeholder="Cargo (opcional)" /><input name="area" placeholder="Área (opcional)" /><input name="start_date" placeholder="MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" title="Fecha de ingreso (MM/DD/AAAA)" maxLength={10} /><input name="manager_name" placeholder="Responsable (opcional)" /><select name="status" defaultValue="active"><option value="active">Activo</option><option value="inactive">Inactivo</option><option value="leave">Ausente</option></select><input name="notes" placeholder="Notas u observaciones (opcional)" /><button>Guardar técnico</button></form></details></div>
         </section>}
 
         {activeSection === "technicians" && selectedTechnician && <section className="detail-panel">
           <div className="detail-heading"><div><span className="kicker">TÉCNICO SELECCIONADO</span><h2>{selectedTechnician.full_name}</h2></div><button className="text-button" onClick={() => setSelectedTechnicianId(null)}>Cerrar ficha</button></div>
-          <div className="detail-grid"><div><span>Estado</span><strong>{selectedTechnician.status}</strong></div><div><span>Correo</span><strong>{selectedTechnician.email ?? "Sin correo"}</strong></div><div><span>Cargo</span><strong>{selectedTechnician.job_title ?? "Sin cargo"}</strong></div><div><span>Área</span><strong>{selectedTechnician.area ?? "Sin área"}</strong></div><div><span>Certificaciones vigentes</span><strong>{records.filter((record) => record.technician_id === selectedTechnician.id && isRecordCurrent(record)).length} de {records.filter((record) => record.technician_id === selectedTechnician.id).length} registradas</strong></div><div><span>Responsable</span><strong>{selectedTechnician.manager_name ?? "Sin asignar"}</strong></div></div>
+          <div className="detail-grid"><div><span>Estado</span><strong>{getEntityStatusPresentation(selectedTechnician.status).label}</strong></div><div><span>Correo</span><strong>{selectedTechnician.email ?? "Sin correo"}</strong></div><div><span>Cargo</span><strong>{selectedTechnician.job_title ?? "Sin cargo"}</strong></div><div><span>Área</span><strong>{selectedTechnician.area ?? "Sin área"}</strong></div><div><span>Certificaciones vigentes</span><strong>{records.filter((record) => record.technician_id === selectedTechnician.id && isRecordCurrent(record)).length} de {records.filter((record) => record.technician_id === selectedTechnician.id).length} registradas</strong></div><div><span>Responsable</span><strong>{selectedTechnician.manager_name ?? "Sin asignar"}</strong></div></div>
         </section>}
 
         {activeSection === "technicians" && <section className="panel data-panel">
           <div className="panel-heading"><div><span className="kicker">EQUIPO</span><h2>Técnicos</h2></div><span className="result-count">{visibleTechnicians.length} resultados</span></div>
           <div className="table-list">
             {visibleTechnicians.map((technician) => <article className={`table-row selectable-row ${selectedTechnicianId === technician.id ? "selected-row" : ""}`} key={technician.id} onClick={() => setSelectedTechnicianId(technician.id)}>
-              <div className="brand-logo">{technician.full_name.slice(0, 2).toUpperCase()}</div><div><strong>{technician.full_name}</strong><span>{technician.email ?? technician.job_title ?? "Sin datos de contacto"}</span></div><span className={`status ${technician.status === "active" ? "cumplido" : "pendiente"}`}>{technician.status}</span><span>{technician.area ?? "Sin área"}</span>{canManage ? <div className="row-actions"><button onClick={() => editTechnician(technician)}>Editar</button><button onClick={() => removeTechnician(technician)}>Eliminar</button></div> : <button className="text-button" onClick={() => showSection("certifications", { query: technician.full_name })}>Ver certificados</button>}
+              <div className="brand-logo">{technician.full_name.slice(0, 2).toUpperCase()}</div><div><strong>{technician.full_name}</strong><span>{technician.email ?? technician.job_title ?? "Sin datos de contacto"}</span></div><span className={`status ${getEntityStatusPresentation(technician.status).className}`}>{getEntityStatusPresentation(technician.status).label}</span><span>{technician.area ?? "Sin área"}</span>{canManage ? <div className="row-actions"><button onClick={(event) => { event.stopPropagation(); editTechnician(technician); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); removeTechnician(technician); }}>Eliminar</button></div> : <button className="text-button" onClick={(event) => { event.stopPropagation(); openTechnician(technician.id); }}>Abrir ficha</button>}
             </article>)}
             {visibleTechnicians.length === 0 && <p className="empty-state">No hay técnicos que coincidan con la búsqueda.</p>}
           </div>
@@ -791,29 +897,29 @@ export default function Home() {
         {activeSection === "certifications" && canManage && <section className="management-panel contextual-management">
           <div><span className="kicker">ADMINISTRACIÓN DE CERTIFICACIONES</span><h2>Catálogo y asignaciones</h2><p>Crea certificaciones por marca y asígnalas al técnico que ya las posee.</p></div>
           <div className="management-actions">
-            <details><summary>Nueva certificación</summary><form onSubmit={handleAddCatalogCertification} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><input name="name" placeholder="Nombre de certificación" required /><input name="code" placeholder="Código (opcional)" /><input name="notes" placeholder="Observación (opcional)" /><button>Guardar certificación</button></form></details>
+            <details><summary>Nueva certificación</summary><form onSubmit={handleAddCatalogCertification} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><input name="name" placeholder="Nombre de certificación" required /><input name="code" placeholder="Código (opcional)" /><select name="certification_type" defaultValue="technical"><option value="technical">Técnica</option><option value="sales">Ventas</option><option value="presales">Preventas</option><option value="implementation">Implementación</option><option value="support">Soporte</option><option value="architecture">Arquitectura</option><option value="other">Otra</option></select><input name="level" placeholder="Nivel (opcional)" /><input name="validity_months" type="number" min="1" placeholder="Vigencia en meses" /><input name="official_url" type="url" placeholder="URL oficial (opcional)" /><select name="status" defaultValue="active"><option value="active">Activa</option><option value="inactive">Inactiva</option><option value="retired">Retirada</option></select><input name="notes" placeholder="Observación (opcional)" /><button>Guardar certificación</button></form></details>
             <details><summary>Asignar a técnico</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><select name="technician_id" required><option value="">Técnico</option>{technicians.filter((technician) => technician.status === "active").map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><select name="certification_id" required><option value="">Certificación</option>{certifications.filter((certification) => certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select><input name="issued_at" placeholder="Emisión MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxLength={10} /><input name="expires_at" placeholder="Vencimiento MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxLength={10} /><input name="certificate_number" placeholder="N.º de certificado" /><input name="notes" placeholder="Observación (opcional)" /><input name="certificate_file" type="file" accept="application/pdf" title="PDF del certificado" /><input name="verification_url" type="url" placeholder="Enlace de evidencia" /><select name="status" defaultValue="active"><option value="active">Vigente</option><option value="expiring">Por vencer</option><option value="pending_validation">Pendiente de validar</option></select><button>Guardar asignación</button></form></details>
           </div>
         </section>}
 
         {activeSection === "certifications" && selectedCertification && <section className="detail-panel">
           <div className="detail-heading"><div><span className="kicker">CERTIFICACIÓN SELECCIONADA</span><h2>{selectedCertification.name}</h2></div><button className="text-button" onClick={() => setSelectedCertificationId(null)}>Cerrar ficha</button></div>
-          <div className="detail-grid"><div><span>Marca</span><strong>{brandNameById.get(selectedCertification.brand_id) ?? "Sin marca"}</strong></div><div><span>Código</span><strong>{selectedCertification.code ?? "Sin código"}</strong></div><div><span>Tipo</span><strong>{selectedCertification.certification_type}</strong></div><div><span>Estado</span><strong>{selectedCertification.status}</strong></div><div><span>Cobertura del requisito</span><strong>{selectedCertificationRequirement ? `${getRequirementCoverage(selectedCertificationRequirement).achieved} de ${getRequirementCoverage(selectedCertificationRequirement).required} cubiertos` : "Sin requisito asociado"}</strong></div><div><span>Certificaciones vigentes</span><strong>{records.filter((record) => record.certification_id === selectedCertification.id && isRecordCurrent(record)).length}</strong></div><div><span>Observaciones</span><strong>{selectedCertification.notes ?? "Sin observaciones"}</strong></div></div>
+          <div className="detail-grid"><div><span>Marca</span><strong>{brandNameById.get(selectedCertification.brand_id) ?? "Sin marca"}</strong></div><div><span>Código</span><strong>{selectedCertification.code ?? "Sin código"}</strong></div><div><span>Tipo</span><strong>{selectedCertification.certification_type}</strong></div><div><span>Estado</span><strong>{getEntityStatusPresentation(selectedCertification.status, true).label}</strong></div><div><span>Cobertura del requisito</span><strong>{selectedCertificationRequirement ? `${getRequirementCoverage(selectedCertificationRequirement).achieved} de ${getRequirementCoverage(selectedCertificationRequirement).required} cubiertos` : "Sin requisito asociado"}</strong></div><div><span>Certificaciones vigentes</span><strong>{records.filter((record) => record.certification_id === selectedCertification.id && isRecordCurrent(record)).length}</strong></div><div><span>Enlace oficial</span>{getSafeExternalUrl(selectedCertification.official_url) ? <a className="external-link" href={getSafeExternalUrl(selectedCertification.official_url)!} target="_blank" rel="noreferrer">Abrir sitio oficial</a> : <strong>{selectedCertification.official_url ? "Enlace no válido" : "No registrado"}</strong>}</div><div><span>Observaciones</span><strong>{selectedCertification.notes ?? "Sin observaciones"}</strong></div></div>
         </section>}
 
         {activeSection === "certifications" && <section className="panel data-panel">
-          <div className="panel-heading"><div><span className="kicker">VIGENCIAS</span><h2>{showExpiringOnly ? "Próximos vencimientos" : "Certificaciones"}</h2></div><button className="text-button" onClick={() => { setShowExpiringOnly(false); setSearchQuery(""); }}>Limpiar filtros</button></div>
+          <div className="panel-heading"><div><span className="kicker">VIGENCIAS</span><h2>{showExpiringOnly ? "Próximos vencimientos" : "Certificaciones"}</h2></div>{(showExpiringOnly || searchQuery) && <button className="text-button" onClick={() => { setShowExpiringOnly(false); setSearchQuery(""); }}>Limpiar filtros</button>}</div>
           <div className="table-list">
             {canManage && <>
               <div className="panel-heading"><span className="kicker">CATÁLOGO ADMINISTRABLE</span><strong>{visibleCatalog.length} certificaciones</strong></div>
               {visibleCatalog.map((certification) => <article className={`table-row catalog-row selectable-row ${selectedCertificationId === certification.id ? "selected-row" : ""}`} key={certification.id} onClick={() => setSelectedCertificationId(certification.id)}>
-                <div className="brand-logo"><Award size={18}/></div><div><strong>{certification.name}</strong><span>{brandNameById.get(certification.brand_id) ?? "Marca sin identificar"} · {certification.code ?? "Sin código"}</span></div><span className={`status ${certification.status === "active" ? "cumplido" : "pendiente"}`}>{certification.status}</span><span>{certification.validity_months ? `${certification.validity_months} meses de vigencia` : certification.level ?? "Sin vigencia definida"}</span><div className="row-actions"><button onClick={() => editCatalogCertification(certification)}>Editar</button><button onClick={() => removeCatalogCertification(certification)}>Eliminar</button></div>
+                <div className="brand-logo"><Award size={18}/></div><div><strong>{certification.name}</strong><span>{brandNameById.get(certification.brand_id) ?? "Marca sin identificar"} · {certification.code ?? "Sin código"}</span></div><span className={`status ${getEntityStatusPresentation(certification.status, true).className}`}>{getEntityStatusPresentation(certification.status, true).label}</span><span>{certification.validity_months ? `${certification.validity_months} meses de vigencia` : certification.level ?? "Sin vigencia definida"}</span><div className="row-actions"><button onClick={(event) => { event.stopPropagation(); editCatalogCertification(certification); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); removeCatalogCertification(certification); }}>Eliminar</button></div>
               </article>)}
               {visibleCatalog.length === 0 && <p className="empty-state">No hay certificaciones de catálogo que coincidan con la búsqueda.</p>}
               <div className="panel-heading"><span className="kicker">ASIGNACIONES</span><strong>{visibleRecords.length} certificaciones de técnicos</strong></div>
             </>}
             {visibleRecords.map((record) => <article className={`table-row selectable-row ${selectedCertificationId === record.certification_id ? "selected-row" : ""}`} key={record.id} onClick={() => setSelectedCertificationId(record.certification_id)}>
-              <div className="brand-logo"><Award size={18}/></div><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>{certificationById.get(record.certification_id)?.name ?? record.certification_id}</span>{!record.evidence_path && <span className="missing-pdf" title="Sin PDF adjunto"><FileWarning size={13} aria-hidden="true" />Sin PDF</span>}</div><span className={`status ${getRecordPresentation(record).className}`}>{getRecordPresentation(record).label}</span><span>Vence: {formatDate(record.expires_at)}</span>{canManage ? <div className="row-actions"><button onClick={() => editTechnicianCertification(record)}>Editar</button><button onClick={() => deleteTechnicianCertification(record)}>Eliminar</button></div> : <span />}
+              <div className="brand-logo"><Award size={18}/></div><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>{certificationById.get(record.certification_id)?.name ?? record.certification_id}</span>{!record.evidence_path && <span className="missing-pdf" title="Sin PDF adjunto"><FileWarning size={13} aria-hidden="true" />Sin PDF</span>}</div><span className={`status ${getRecordPresentation(record).className}`}>{getRecordPresentation(record).label}</span><span>Vence: {formatDate(record.expires_at)}</span>{canManage ? <div className="row-actions"><button onClick={(event) => { event.stopPropagation(); editTechnicianCertification(record); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); deleteTechnicianCertification(record); }}>Eliminar</button></div> : <span />}
             </article>)}
             {visibleRecords.length === 0 && <p className="empty-state">No hay certificaciones que coincidan con los filtros actuales.</p>}
           </div>
@@ -821,7 +927,7 @@ export default function Home() {
 
         {activeSection === "requirements" && canManage && <section className="management-panel contextual-management">
           <div><span className="kicker">ADMINISTRACIÓN DE REQUISITOS</span><h2>Agregar un requisito</h2><p>Define cuántos técnicos certificados requiere cada marca para cumplir.</p></div>
-          <div className="management-actions"><details><summary>Nuevo requisito</summary><form onSubmit={handleAddRequirement} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><input name="certification_name" placeholder="Nombre de certificación" required /><input name="required_count" type="number" min="1" defaultValue="1" title="Cantidad requerida" required /><button>Guardar requisito</button></form></details></div>
+          <div className="management-actions"><details><summary>Nuevo requisito</summary><form onSubmit={handleAddRequirement} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><input name="certification_name" placeholder="Nombre de certificación" required /><input name="required_count" type="number" min="1" defaultValue="1" title="Cantidad requerida" required /><input name="effective_from" placeholder="Vigente desde MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxLength={10} /><input name="effective_until" placeholder="Vigente hasta MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxLength={10} /><label className="inline-checkbox"><input name="distinct_people_required" type="checkbox" defaultChecked /> Técnicos distintos</label><label className="inline-checkbox"><input name="mandatory" type="checkbox" defaultChecked /> Obligatorio</label><input name="notes" placeholder="Notas u observaciones (opcional)" /><button>Guardar requisito</button></form></details></div>
         </section>}
 
         {activeSection === "requirements" && selectedRequirement && <section className="detail-panel">
@@ -830,10 +936,10 @@ export default function Home() {
         </section>}
 
         {activeSection === "requirements" && <section className="panel data-panel">
-          <div className="panel-heading"><div><span className="kicker">COBERTURA</span><h2>Requisitos</h2></div><button className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button></div>
+          <div className="panel-heading"><div><span className="kicker">COBERTURA</span><h2>Requisitos</h2></div>{searchQuery && <button className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button>}</div>
           <div className="table-list">
             {visibleRequirements.map((requirement) => <article className={`table-row requirement-row selectable-row ${selectedRequirementId === requirement.id ? "selected-row" : ""}`} key={requirement.id} onClick={() => setSelectedRequirementId(requirement.id)}>
-              <div className="brand-logo"><FileCheck2 size={18}/></div><div><strong>{brandNameById.get(requirement.brand_id) ?? "Marca sin identificar"}</strong><span>{certificationById.get(requirement.certification_id)?.name ?? requirement.certification_id}</span></div><div className="coverage-cell"><span>Cobertura</span><strong>{getRequirementCoverage(requirement).achieved} de {getRequirementCoverage(requirement).required} cubiertos</strong></div><div className="coverage-cell"><span>{getRequirementCoverage(requirement).gap === 0 ? "Estado" : "Pendiente"}</span><strong>{getRequirementCoverage(requirement).gap === 0 ? "Requisito cubierto" : `${getRequirementCoverage(requirement).gap} cupos`}</strong></div>{canManage ? <div className="row-actions"><button onClick={() => editFullRequirement(requirement)}>Editar</button><button onClick={() => deleteRequirement(requirement)}>Eliminar</button></div> : <span />}
+              <div className="brand-logo"><FileCheck2 size={18}/></div><div><strong>{brandNameById.get(requirement.brand_id) ?? "Marca sin identificar"}</strong><span>{certificationById.get(requirement.certification_id)?.name ?? requirement.certification_id}</span></div><div className="coverage-cell"><span>Cobertura</span><strong>{getRequirementCoverage(requirement).achieved} de {getRequirementCoverage(requirement).required} cubiertos</strong></div><div className="coverage-cell"><span>{getRequirementCoverage(requirement).gap === 0 ? "Estado" : "Pendiente"}</span><strong>{getRequirementCoverage(requirement).gap === 0 ? "Requisito cubierto" : `${getRequirementCoverage(requirement).gap} cupos`}</strong></div>{canManage ? <div className="row-actions"><button onClick={(event) => { event.stopPropagation(); editFullRequirement(requirement); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); deleteRequirement(requirement); }}>Eliminar</button></div> : <span />}
             </article>)}
             {visibleRequirements.length === 0 && <p className="empty-state">No hay requisitos que coincidan con la búsqueda.</p>}
           </div>
@@ -843,13 +949,13 @@ export default function Home() {
       {activeSection === "brands" && selectedBrand && selectedBrandSummary && <div className="modal-backdrop" role="presentation" onMouseDown={() => setSelectedBrandId(null)}>
         <section className="entity-modal" role="dialog" aria-modal="true" aria-labelledby="brand-modal-title" onMouseDown={(event) => event.stopPropagation()}>
           <div className="modal-heading"><div><span className="kicker">MARCA</span><h2 id="brand-modal-title">{selectedBrand.name}</h2><p>{selectedBrand.internal_owner ?? "Sin responsable asignado"}</p></div><button className="modal-close" onClick={() => setSelectedBrandId(null)}>Cerrar</button></div>
-          <div className="detail-grid modal-summary"><div><span>Estado</span><strong>{selectedBrand.status}</strong></div><div><span>Cobertura</span><strong>{selectedBrandSummary.covered} de {selectedBrandSummary.required} cupos</strong></div><div><span>Cumplimiento</span><strong>{selectedBrandSummary.compliance}%</strong></div><div><span>Certificaciones</span><strong>{certifications.filter((certification) => certification.brand_id === selectedBrand.id).length}</strong></div><div><span>Requisitos</span><strong>{requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).length}</strong></div><div><span>Notas</span><strong>{selectedBrand.notes ?? "Sin notas"}</strong></div></div>
+          <div className="detail-grid modal-summary"><div><span>Estado</span><strong>{getEntityStatusPresentation(selectedBrand.status, true).label}</strong></div><div><span>Cobertura</span><strong>{selectedBrandSummary.covered} de {selectedBrandSummary.required} cupos</strong></div><div><span>Cumplimiento</span><strong>{selectedBrandSummary.compliance}%</strong></div><div><span>Certificaciones</span><strong>{certifications.filter((certification) => certification.brand_id === selectedBrand.id).length}</strong></div><div><span>Requisitos</span><strong>{requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).length}</strong></div><div><span>Notas</span><strong>{selectedBrand.notes ?? "Sin notas"}</strong></div></div>
 
           <div className="modal-section"><div><span className="kicker">REQUISITOS DE {selectedBrand.name.toUpperCase()}</span><h3>Requisitos de certificación</h3></div>
             {requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).length > 0 ? <div className="brand-requirements">{requirements.filter((requirement) => requirement.brand_id === selectedBrand.id).map((requirement) => <button type="button" key={requirement.id} onClick={() => setSelectedCertificationId(requirement.certification_id)}><strong>{certificationById.get(requirement.certification_id)?.name ?? "Certificación sin identificar"}</strong><span>{getRequirementCoverage(requirement).achieved} de {getRequirementCoverage(requirement).required} cubiertos · {getRequirementCoverage(requirement).compliance}%</span></button>)}</div> : <p className="modal-empty">Aún no hay requisitos registrados para esta marca.</p>}
           </div>
 
-          {canManage && <div className="modal-section modal-form-section"><details><summary>Agregar requisito a {selectedBrand.name}</summary><form onSubmit={handleAddRequirement} className="inline-form"><input type="hidden" name="brand_id" value={selectedBrand.id} /><input name="certification_name" placeholder="Nombre de certificación" required /><input name="required_count" type="number" min="1" defaultValue="1" title="Cantidad requerida" required /><button>Guardar requisito</button></form></details></div>}
+          {canManage && <div className="modal-section modal-form-section"><details><summary>Agregar requisito a {selectedBrand.name}</summary><form onSubmit={handleAddRequirement} className="inline-form"><input type="hidden" name="brand_id" value={selectedBrand.id} /><input name="certification_name" placeholder="Nombre de certificación" required /><input name="required_count" type="number" min="1" defaultValue="1" title="Cantidad requerida" required /><input name="effective_from" placeholder="Vigente desde MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxLength={10} /><input name="effective_until" placeholder="Vigente hasta MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxLength={10} /><label className="inline-checkbox"><input name="distinct_people_required" type="checkbox" defaultChecked /> Técnicos distintos</label><label className="inline-checkbox"><input name="mandatory" type="checkbox" defaultChecked /> Obligatorio</label><input name="notes" placeholder="Notas u observaciones (opcional)" /><button>Guardar requisito</button></form></details></div>}
         </section>
       </div>}
 
@@ -862,7 +968,7 @@ export default function Home() {
             {records.filter((record) => record.certification_id === selectedCertification.id).length > 0 ? <div className="certificate-assignments">{records.filter((record) => record.certification_id === selectedCertification.id).map((record) => <div key={record.id}><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>Emitida: {formatDate(record.issued_at)} · Vence: {formatDate(record.expires_at)}</span>{record.certificate_number && <span>N.º {record.certificate_number}</span>}{record.notes && <span className="assignment-note">{record.notes}</span>}</div><div className="assignment-actions"><span className={`status ${getRecordPresentation(record).className}`}>{getRecordPresentation(record).label}</span>{!record.evidence_path && <span className="missing-pdf" title="Sin PDF adjunto"><FileWarning size={14} aria-hidden="true" />Sin PDF adjunto</span>}{(record.evidence_path || record.verification_url) && <button type="button" className="text-button" onClick={() => openCertificateEvidence(record)}>Ver respaldo</button>}{canManage && <button type="button" className="text-button" onClick={() => editTechnicianCertification(record)}>Editar</button>}</div></div>)}</div> : <p className="modal-empty">Todavía no hay técnicos registrados con esta certificación.</p>}
           </div>
 
-          {canManage && <div className="modal-section modal-form-section"><details><summary>Registrar certificación completada</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><input type="hidden" name="certification_id" value={selectedCertification.id} /><input type="hidden" name="status" value="active" /><select name="technician_id" required><option value="">Técnico certificado</option>{technicians.filter((technician) => technician.status === "active").map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><input name="issued_at" placeholder="Emisión MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxLength={10} required /><input name="expires_at" placeholder="Vencimiento MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxLength={10} /><input name="certificate_number" placeholder="N.º de certificado" /><input name="notes" placeholder="Observación o información extra" /><input name="certificate_file" type="file" accept="application/pdf" title="PDF del certificado" /><button>Registrar completada</button></form></details></div>}
+          {canManage && <div className="modal-section modal-form-section"><details><summary>Registrar certificación completada</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><input type="hidden" name="certification_id" value={selectedCertification.id} /><select name="technician_id" required><option value="">Técnico certificado</option>{technicians.filter((technician) => technician.status === "active").map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><input name="issued_at" placeholder="Emisión MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxLength={10} required /><input name="expires_at" placeholder="Vencimiento MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxLength={10} /><input name="certificate_number" placeholder="N.º de certificado" /><select name="status" defaultValue="active"><option value="active">Vigente</option><option value="expiring">Por vencer</option><option value="pending_validation">Pendiente de validar</option></select><input name="notes" placeholder="Observación o información extra" /><input name="certificate_file" type="file" accept="application/pdf" title="PDF del certificado" /><input name="verification_url" type="url" placeholder="Enlace de evidencia (opcional)" /><button>Registrar completada</button></form></details></div>}
         </section>
       </div>}
 
