@@ -64,10 +64,12 @@ nav button.active { border-color: var(--white); background: var(--white); color:
 h1 { margin: 0; font-size: clamp(30px, 3vw, 40px); line-height: 1; letter-spacing: -.055em; }
 
 .top-actions { display: flex; align-items: center; gap: 8px; }
-.search { display: flex; align-items: center; gap: 9px; width: 256px; min-height: 42px; padding: 0 13px; border: 1px solid var(--line); border-radius: 0; background: var(--white); color: var(--muted); font-size: 13px; }
+.search { display: flex; align-items: center; gap: 9px; width: 300px; min-height: 42px; padding: 0 9px 0 13px; border: 1px solid var(--line); border-radius: 0; background: var(--white); color: var(--muted); font-size: 13px; }
 .search:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(52, 73, 220, .12); }
 .search input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); }
 .search input::placeholder { color: #8991a1; }
+.clear-search { flex: 0 0 auto; border: 0; border-left: 1px solid var(--line); background: transparent; color: var(--blue); cursor: pointer; font-size: 11px; font-weight: 700; line-height: 1; padding: 5px 0 5px 9px; }
+.clear-search:hover { color: var(--navy); text-decoration: underline; }
 .icon-button { position: relative; display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid var(--line); border-radius: 0; background: var(--white); color: var(--ink); cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease; }
 .icon-button:hover { border-color: var(--navy); box-shadow: 0 5px 14px rgba(1, 9, 92, .1); }
 .icon-button i { position: absolute; top: 8px; right: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }

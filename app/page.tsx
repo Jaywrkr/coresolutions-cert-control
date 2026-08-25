@@ -59,7 +59,8 @@ export default function Home() {
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
-      if (editingCertificationRecord) setEditingCertificationRecord(null);
+      if (searchQuery) setSearchQuery("");
+      else if (editingCertificationRecord) setEditingCertificationRecord(null);
       else if (editingRequirement) setEditingRequirement(null);
       else if (editingCatalogCertification) setEditingCatalogCertification(null);
       else if (editingTechnician) setEditingTechnician(null);
@@ -71,7 +72,7 @@ export default function Home() {
     }
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [editingBrand, editingCatalogCertification, editingCertificationRecord, editingRequirement, editingTechnician, selectedBrandId, selectedCertificationId, selectedRequirementId, selectedTechnicianId]);
+  }, [editingBrand, editingCatalogCertification, editingCertificationRecord, editingRequirement, editingTechnician, searchQuery, selectedBrandId, selectedCertificationId, selectedRequirementId, selectedTechnicianId]);
 
   useEffect(() => {
     let supabase;
@@ -727,14 +728,34 @@ export default function Home() {
     requirements: "Requisitos",
   };
 
-  function showSection(section: Section, options?: { query?: string; expiring?: boolean }) {
+  function showSection(section: Section, options?: { expiring?: boolean }) {
     setActiveSection(section);
     setShowExpiringOnly(options?.expiring ?? false);
     setSelectedBrandId(null);
     setSelectedTechnicianId(null);
     setSelectedCertificationId(null);
     setSelectedRequirementId(null);
-    setSearchQuery(options?.query ?? "");
+    setSearchQuery("");
+  }
+
+  function openBrand(brandId: string) {
+    setActiveSection("brands");
+    setShowExpiringOnly(false);
+    setSearchQuery("");
+    setSelectedTechnicianId(null);
+    setSelectedCertificationId(null);
+    setSelectedRequirementId(null);
+    setSelectedBrandId(brandId);
+  }
+
+  function openTechnician(technicianId: string) {
+    setActiveSection("technicians");
+    setShowExpiringOnly(false);
+    setSearchQuery("");
+    setSelectedBrandId(null);
+    setSelectedCertificationId(null);
+    setSelectedRequirementId(null);
+    setSelectedTechnicianId(technicianId);
   }
 
   function formatDate(value: string | null) {
@@ -788,7 +809,7 @@ export default function Home() {
         <header className="topbar">
           <div><p className="eyebrow">CONTROL DE CANAL</p><h1>{sectionTitles[activeSection]}</h1></div>
           <div className="top-actions">
-            <label className="search"><Search size={18}/><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Buscar" aria-label="Buscar en el dashboard" /></label>
+            <div className="search"><Search size={18}/><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={`Buscar en ${sectionTitles[activeSection].toLocaleLowerCase()}`} aria-label={`Buscar en ${sectionTitles[activeSection]}`} />{searchQuery && <button type="button" className="clear-search" onClick={() => setSearchQuery("")} aria-label="Limpiar búsqueda">Limpiar</button>}</div>
             <button className="icon-button" aria-label="Ver alertas" onClick={() => showSection("requirements")}><Bell size={19}/>{openGaps > 0 && <i />}</button>
             <div className="profile-chip"><span>{canManage ? "Administrador" : "Usuario"}</span><div className="avatar">{session.user.email?.slice(0, 2).toUpperCase()}</div></div>
           </div>
@@ -816,7 +837,7 @@ export default function Home() {
             <div className="panel-heading"><div><span className="kicker">DATOS REALES</span><h2>Cumplimiento por marca</h2></div></div>
             <div className="brand-list">
               {visibleBrandSummaries.map((brand) => (
-                <button className="brand-row row-button" key={brand.id} onClick={() => showSection("requirements", { query: brand.name })}>
+                <button className="brand-row row-button" key={brand.id} onClick={() => openBrand(brand.id)}>
                   <div className="brand-logo">{brand.name.slice(0, 2).toUpperCase()}</div>
                   <div className="brand-info"><strong>{brand.name}</strong><span>{brand.required === 0 ? "Sin requisitos cargados" : brand.covered === brand.required ? "Requisitos cubiertos" : `${Math.max(brand.required - brand.covered, 0)} cupos pendientes`}</span></div>
                   <div className="requirement-count"><span>Cobertura</span><strong>{brand.covered} de {brand.required}</strong></div>
@@ -847,7 +868,7 @@ export default function Home() {
           <div className="panel-heading"><div><span className="kicker">CATÁLOGO</span><h2>Marcas</h2></div><span className="result-count">{visibleBrandSummaries.length} resultados</span></div>
           <div className="table-list">
             {visibleBrandSummaries.map((brand) => <article className={`table-row draggable-row ${selectedBrandId === brand.id ? "selected-row" : ""}`} key={brand.id} draggable={canManage} onClick={() => setSelectedBrandId(brand.id)} onDragStart={(event) => handleBrandDragStart(event, brand.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => handleBrandDrop(event, brand.id)} onDragEnd={() => setDraggedBrandId(null)}>
-              <div className="brand-logo">{canManage ? <GripVertical size={18} /> : brand.name.slice(0, 2).toUpperCase()}</div><div><strong>{brand.name}</strong><span>{brand.internal_owner ?? "Sin responsable"}</span></div><span className={`status ${getEntityStatusPresentation(brand.status, true).className}`}>{getEntityStatusPresentation(brand.status, true).label}</span><span>{brand.required > 0 ? `${brand.covered} de ${brand.required} cubiertos` : "Sin requisitos"}</span>{canManage ? <div className="row-actions reorder-actions"><button aria-label={`Subir ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === 0} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, -1); }}><ArrowUp size={15}/></button><button aria-label={`Bajar ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === brands.length - 1} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, 1); }}><ArrowDown size={15}/></button><button onClick={(event) => { event.stopPropagation(); editBrand(brands.find((item) => item.id === brand.id)!); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); removeBrand(brands.find((item) => item.id === brand.id)!); }}>Eliminar</button></div> : <button className="text-button" onClick={(event) => { event.stopPropagation(); showSection("requirements", { query: brand.name }); }}>Ver requisitos</button>}
+              <div className="brand-logo">{canManage ? <GripVertical size={18} /> : brand.name.slice(0, 2).toUpperCase()}</div><div><strong>{brand.name}</strong><span>{brand.internal_owner ?? "Sin responsable"}</span></div><span className={`status ${getEntityStatusPresentation(brand.status, true).className}`}>{getEntityStatusPresentation(brand.status, true).label}</span><span>{brand.required > 0 ? `${brand.covered} de ${brand.required} cubiertos` : "Sin requisitos"}</span>{canManage ? <div className="row-actions reorder-actions"><button aria-label={`Subir ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === 0} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, -1); }}><ArrowUp size={15}/></button><button aria-label={`Bajar ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === brands.length - 1} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, 1); }}><ArrowDown size={15}/></button><button onClick={(event) => { event.stopPropagation(); editBrand(brands.find((item) => item.id === brand.id)!); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); removeBrand(brands.find((item) => item.id === brand.id)!); }}>Eliminar</button></div> : <button className="text-button" onClick={(event) => { event.stopPropagation(); openBrand(brand.id); }}>Abrir marca</button>}
             </article>)}
             {visibleBrandSummaries.length === 0 && <p className="empty-state">No hay marcas que coincidan con la búsqueda.</p>}
           </div>
@@ -867,7 +888,7 @@ export default function Home() {
           <div className="panel-heading"><div><span className="kicker">EQUIPO</span><h2>Técnicos</h2></div><span className="result-count">{visibleTechnicians.length} resultados</span></div>
           <div className="table-list">
             {visibleTechnicians.map((technician) => <article className={`table-row selectable-row ${selectedTechnicianId === technician.id ? "selected-row" : ""}`} key={technician.id} onClick={() => setSelectedTechnicianId(technician.id)}>
-              <div className="brand-logo">{technician.full_name.slice(0, 2).toUpperCase()}</div><div><strong>{technician.full_name}</strong><span>{technician.email ?? technician.job_title ?? "Sin datos de contacto"}</span></div><span className={`status ${getEntityStatusPresentation(technician.status).className}`}>{getEntityStatusPresentation(technician.status).label}</span><span>{technician.area ?? "Sin área"}</span>{canManage ? <div className="row-actions"><button onClick={(event) => { event.stopPropagation(); editTechnician(technician); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); removeTechnician(technician); }}>Eliminar</button></div> : <button className="text-button" onClick={(event) => { event.stopPropagation(); showSection("certifications", { query: technician.full_name }); }}>Ver certificados</button>}
+              <div className="brand-logo">{technician.full_name.slice(0, 2).toUpperCase()}</div><div><strong>{technician.full_name}</strong><span>{technician.email ?? technician.job_title ?? "Sin datos de contacto"}</span></div><span className={`status ${getEntityStatusPresentation(technician.status).className}`}>{getEntityStatusPresentation(technician.status).label}</span><span>{technician.area ?? "Sin área"}</span>{canManage ? <div className="row-actions"><button onClick={(event) => { event.stopPropagation(); editTechnician(technician); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); removeTechnician(technician); }}>Eliminar</button></div> : <button className="text-button" onClick={(event) => { event.stopPropagation(); openTechnician(technician.id); }}>Abrir ficha</button>}
             </article>)}
             {visibleTechnicians.length === 0 && <p className="empty-state">No hay técnicos que coincidan con la búsqueda.</p>}
           </div>
@@ -887,7 +908,7 @@ export default function Home() {
         </section>}
 
         {activeSection === "certifications" && <section className="panel data-panel">
-          <div className="panel-heading"><div><span className="kicker">VIGENCIAS</span><h2>{showExpiringOnly ? "Próximos vencimientos" : "Certificaciones"}</h2></div><button className="text-button" onClick={() => { setShowExpiringOnly(false); setSearchQuery(""); }}>Limpiar filtros</button></div>
+          <div className="panel-heading"><div><span className="kicker">VIGENCIAS</span><h2>{showExpiringOnly ? "Próximos vencimientos" : "Certificaciones"}</h2></div>{(showExpiringOnly || searchQuery) && <button className="text-button" onClick={() => { setShowExpiringOnly(false); setSearchQuery(""); }}>Limpiar filtros</button>}</div>
           <div className="table-list">
             {canManage && <>
               <div className="panel-heading"><span className="kicker">CATÁLOGO ADMINISTRABLE</span><strong>{visibleCatalog.length} certificaciones</strong></div>
@@ -915,7 +936,7 @@ export default function Home() {
         </section>}
 
         {activeSection === "requirements" && <section className="panel data-panel">
-          <div className="panel-heading"><div><span className="kicker">COBERTURA</span><h2>Requisitos</h2></div><button className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button></div>
+          <div className="panel-heading"><div><span className="kicker">COBERTURA</span><h2>Requisitos</h2></div>{searchQuery && <button className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button>}</div>
           <div className="table-list">
             {visibleRequirements.map((requirement) => <article className={`table-row requirement-row selectable-row ${selectedRequirementId === requirement.id ? "selected-row" : ""}`} key={requirement.id} onClick={() => setSelectedRequirementId(requirement.id)}>
               <div className="brand-logo"><FileCheck2 size={18}/></div><div><strong>{brandNameById.get(requirement.brand_id) ?? "Marca sin identificar"}</strong><span>{certificationById.get(requirement.certification_id)?.name ?? requirement.certification_id}</span></div><div className="coverage-cell"><span>Cobertura</span><strong>{getRequirementCoverage(requirement).achieved} de {getRequirementCoverage(requirement).required} cubiertos</strong></div><div className="coverage-cell"><span>{getRequirementCoverage(requirement).gap === 0 ? "Estado" : "Pendiente"}</span><strong>{getRequirementCoverage(requirement).gap === 0 ? "Requisito cubierto" : `${getRequirementCoverage(requirement).gap} cupos`}</strong></div>{canManage ? <div className="row-actions"><button onClick={(event) => { event.stopPropagation(); editFullRequirement(requirement); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); deleteRequirement(requirement); }}>Eliminar</button></div> : <span />}
