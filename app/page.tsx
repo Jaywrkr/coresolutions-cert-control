@@ -1,7 +1,7 @@
 "use client";
 
 import { DragEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Award, Bell, Building2, ChevronRight, FileCheck2, FileWarning, GripVertical, LogOut, Search, ShieldCheck, Users } from "lucide-react";
+import { ArrowDown, ArrowUp, Award, Bell, Building2, ChevronRight, FileCheck2, FileWarning, GripVertical, LogOut, RefreshCw, Search, ShieldCheck, Users } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseClient } from "../lib/supabase";
 
@@ -33,6 +33,8 @@ type RequirementCoverage = {
 export default function Home() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [message, setMessage] = useState("");
@@ -101,6 +103,7 @@ export default function Home() {
     try {
       const supabase = getSupabaseClient();
       setLoading(true);
+      setRefreshing(true);
       const [brandsResult, techniciansResult, requirementsResult, certificationsResult, recordsResult, profileResult] = await Promise.all([
         supabase.from("brands").select("id,name,slug,status,internal_owner,notes,sort_order").order("sort_order").order("name"),
         supabase.from("technicians").select("id,full_name,email,job_title,area,status,start_date,manager_name,notes").order("full_name"),
@@ -118,11 +121,13 @@ export default function Home() {
         setCertifications(certificationsResult.data ?? []);
         setRecords(recordsResult.data ?? []);
         setRole((profileResult.data as { role: string } | null)?.role ?? null);
+        setLastSyncedAt(new Date());
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to load the dashboard.");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -819,6 +824,11 @@ export default function Home() {
     return match ? `${match[2]}/${match[3]}/${match[1]}` : value;
   }
 
+  function formatSyncTime(value: Date | null) {
+    if (!value) return "Sincronizando datos…";
+    return `Actualizado ${new Intl.DateTimeFormat("es-EC", { hour: "2-digit", minute: "2-digit" }).format(value)}`;
+  }
+
   if (loading && !session) {
     return <div className="loading-screen">Cargando CoreCert…</div>;
   }
@@ -865,6 +875,8 @@ export default function Home() {
           <div><p className="eyebrow">CONTROL DE CANAL</p><h1>{sectionTitles[activeSection]}</h1></div>
           <div className="top-actions">
             <div className="search"><Search size={18}/><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={`Buscar en ${sectionTitles[activeSection].toLocaleLowerCase()}`} aria-label={`Buscar en ${sectionTitles[activeSection]}`} />{searchQuery && <button type="button" className="clear-search" onClick={() => setSearchQuery("")} aria-label="Limpiar búsqueda">Limpiar</button>}</div>
+            <div className="data-freshness" role="status" aria-live="polite"><span className={refreshing ? "sync-indicator syncing" : "sync-indicator"}/>{refreshing ? "Actualizando…" : formatSyncTime(lastSyncedAt)}</div>
+            <button type="button" className="icon-button" aria-label="Actualizar datos" title="Actualizar datos" disabled={refreshing} onClick={() => void loadDashboard()}><RefreshCw size={18} className={refreshing ? "spin" : ""}/></button>
             <button className="icon-button" aria-label="Ver alertas" onClick={() => showSection("requirements")}><Bell size={19}/>{openGaps > 0 && <i />}</button>
             <div className="profile-chip"><span>{canManage ? "Administrador" : "Usuario"}</span><div className="avatar">{session.user.email?.slice(0, 2).toUpperCase()}</div></div>
           </div>
