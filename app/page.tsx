@@ -473,7 +473,11 @@ export default function Home() {
     if (result.error) {
       if (evidencePath) await supabase.storage.from("certificate-files").remove([evidencePath]);
       setMessage(result.error.message);
-    } else { event.currentTarget.reset(); setMessage("Certificación asignada al técnico."); await loadDashboard(); }
+    } else {
+      event.currentTarget.reset();
+      setMessage(buildRegistrationMessage(certificationId, technicianId, String(form.get("status")), expiresAt, evidencePath, String(form.get("verification_url") ?? "").trim()));
+      await loadDashboard();
+    }
   }
 
   async function editRequirement(requirement: Requirement) {
@@ -644,6 +648,25 @@ export default function Home() {
     const gap = Math.max(requirement.required_count - covered, 0);
     const compliance = requirement.required_count === 0 ? 0 : Math.round((covered / requirement.required_count) * 100);
     return { achieved, covered, required: requirement.required_count, gap, compliance };
+  }
+
+  function buildRegistrationMessage(certificationId: string, technicianId: string, status: string, expiresAt: string | null, evidencePath: string | null, verificationUrl: string) {
+    const technicianName = technicianNameById.get(technicianId) ?? "el técnico";
+    const certificationName = certificationById.get(certificationId)?.name ?? "la certificación";
+    const requirement = requirements.find((item) => item.certification_id === certificationId);
+    const today = new Date();
+    const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const countsNow = (status === "active" || status === "expiring") && (!expiresAt || expiresAt >= localToday);
+    const evidenceNote = evidencePath || verificationUrl ? " Evidencia registrada." : " Se marcará como pendiente de evidencia.";
+    if (!requirement) return `Certificación registrada para ${technicianName}.${evidenceNote}`;
+    const coverage = getRequirementCoverage(requirement);
+    const alreadyCounted = requirement.distinct_people_required && records.some((record) => record.certification_id === certificationId && record.technician_id === technicianId && isRecordCurrent(record));
+    const projectedAchieved = countsNow && !alreadyCounted ? coverage.achieved + 1 : coverage.achieved;
+    const projectedCovered = Math.min(projectedAchieved, requirement.required_count);
+    const impact = countsNow && !alreadyCounted
+      ? `${certificationName} queda ${projectedCovered} de ${requirement.required_count} cupos cubiertos.`
+      : "El registro no modifica la cobertura vigente de este requisito.";
+    return `Certificación registrada para ${technicianName}. ${impact}${evidenceNote}`;
   }
 
   function getRecordPresentation(record: CertificationRecord) {
@@ -922,7 +945,7 @@ export default function Home() {
         </section>}
 
         {activeSection === "certifications" && canManage && <section className="management-panel contextual-management">
-          <div><span className="kicker">ADMINISTRACIÓN DE CERTIFICACIONES</span><h2>Catálogo y asignaciones</h2><p>Crea certificaciones por marca y asígnalas al técnico que ya las posee.</p></div>
+          <div><span className="kicker">ADMINISTRACIÓN DE CERTIFICACIONES</span><h2>Catálogo y asignaciones</h2><p>Crea certificaciones por marca y asígnalas al técnico que ya las posee.</p><p className="form-guidance">Al registrar una certificación, indica primero el técnico, luego las fechas y finalmente la evidencia. El PDF es opcional, pero se marcará como pendiente si no agregas PDF ni enlace.</p></div>
           <div className="management-actions">
             <details><summary>Nueva certificación</summary><form onSubmit={handleAddCatalogCertification} className="inline-form"><select name="brand_id" required><option value="">Marca</option>{brands.filter((brand) => brand.status === "active").map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select><input name="name" placeholder="Nombre de certificación" required /><input name="code" placeholder="Código (opcional)" /><select name="certification_type" defaultValue="technical"><option value="technical">Técnica</option><option value="sales">Ventas</option><option value="presales">Preventas</option><option value="implementation">Implementación</option><option value="support">Soporte</option><option value="architecture">Arquitectura</option><option value="other">Otra</option></select><input name="level" placeholder="Nivel (opcional)" /><input name="validity_months" type="number" min="1" placeholder="Vigencia en meses" /><input name="official_url" type="url" placeholder="URL oficial (opcional)" /><select name="status" defaultValue="active"><option value="active">Activa</option><option value="inactive">Inactiva</option><option value="retired">Retirada</option></select><input name="notes" placeholder="Observación (opcional)" /><button>Guardar certificación</button></form></details>
             <details><summary>Asignar a técnico</summary><form onSubmit={handleAddTechnicianCertification} className="inline-form"><select name="technician_id" required><option value="">Técnico</option>{technicians.filter((technician) => technician.status === "active").map((technician) => <option key={technician.id} value={technician.id}>{technician.full_name}</option>)}</select><select name="certification_id" required><option value="">Certificación</option>{certifications.filter((certification) => certification.status === "active").map((certification) => <option key={certification.id} value={certification.id}>{brandNameById.get(certification.brand_id)} · {certification.name}</option>)}</select><input name="issued_at" placeholder="Emisión MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxLength={10} /><input name="expires_at" placeholder="Vencimiento MM/DD/AAAA" inputMode="numeric" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxLength={10} /><input name="certificate_number" placeholder="N.º de certificado" /><input name="notes" placeholder="Observación (opcional)" /><input name="certificate_file" type="file" accept="application/pdf" title="PDF del certificado" /><input name="verification_url" type="url" placeholder="Enlace de evidencia" /><select name="status" defaultValue="active"><option value="active">Vigente</option><option value="expiring">Por vencer</option><option value="pending_validation">Pendiente de validar</option></select><button>Guardar asignación</button></form></details>
