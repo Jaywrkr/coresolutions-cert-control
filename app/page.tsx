@@ -723,6 +723,7 @@ export default function Home() {
     const days = (new Date(record.expires_at).getTime() - Date.now()) / 86400000;
     return days >= 0 && days <= 90;
   });
+  const searchFilterLabel = searchQuery ? `Búsqueda: “${searchQuery}”` : null;
   const sectionTitles: Record<Section, string> = {
     summary: "Certificaciones",
     brands: "Marcas",
@@ -896,12 +897,12 @@ export default function Home() {
         </section>}
 
         {activeSection === "brands" && <section className="panel data-panel">
-          <div className="panel-heading"><div><span className="kicker">CATÁLOGO</span><h2>Marcas</h2></div><span className="result-count">{visibleBrandSummaries.length} resultados</span></div>
+          <div className="panel-heading"><div><span className="kicker">CATÁLOGO</span><h2>Marcas</h2></div><div className="panel-meta"><span className="result-count">{visibleBrandSummaries.length} resultados</span>{searchFilterLabel && <span className="filter-chip">{searchFilterLabel}</span>}</div></div>
           <div className="table-list">
             {visibleBrandSummaries.map((brand) => <article className={`table-row draggable-row ${selectedBrandId === brand.id ? "selected-row" : ""}`} key={brand.id} draggable={canManage} role="button" tabIndex={0} aria-label={`Abrir detalle de ${brand.name}`} onClick={() => setSelectedBrandId(brand.id)} onKeyDown={(event) => activateRow(event, () => setSelectedBrandId(brand.id))} onDragStart={(event) => handleBrandDragStart(event, brand.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => handleBrandDrop(event, brand.id)} onDragEnd={() => setDraggedBrandId(null)}>
               <div className="brand-logo">{canManage ? <GripVertical size={18} /> : brand.name.slice(0, 2).toUpperCase()}</div><div><strong>{brand.name}</strong><span>{brand.internal_owner ?? "Sin responsable"}</span></div><span className={`status ${getEntityStatusPresentation(brand.status, true).className}`}>{getEntityStatusPresentation(brand.status, true).label}</span><span>{brand.required > 0 ? `${brand.covered} de ${brand.required} cubiertos` : "Sin requisitos"}</span>{canManage ? <div className="row-actions reorder-actions"><button aria-label={`Subir ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === 0} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, -1); }}><ArrowUp size={15}/></button><button aria-label={`Bajar ${brand.name}`} disabled={brands.findIndex((item) => item.id === brand.id) === brands.length - 1} onClick={(event) => { event.stopPropagation(); moveBrand(brand.id, 1); }}><ArrowDown size={15}/></button><button onClick={(event) => { event.stopPropagation(); editBrand(brands.find((item) => item.id === brand.id)!); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); removeBrand(brands.find((item) => item.id === brand.id)!); }}>Eliminar</button></div> : <button className="text-button" onClick={(event) => { event.stopPropagation(); openBrand(brand.id); }}>Abrir marca</button>}
             </article>)}
-            {visibleBrandSummaries.length === 0 && <p className="empty-state">No hay marcas que coincidan con la búsqueda.</p>}
+            {visibleBrandSummaries.length === 0 && <div className="empty-state"><strong>No encontramos marcas con esos criterios.</strong><p>{searchQuery ? "Limpia la búsqueda para volver a ver todo el catálogo." : "Cuando registres una marca aparecerá aquí."}</p>{searchQuery && <button type="button" className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button>}</div>}
           </div>
         </section>}
 
@@ -911,12 +912,12 @@ export default function Home() {
         </section>}
 
         {activeSection === "technicians" && <section className="panel data-panel">
-          <div className="panel-heading"><div><span className="kicker">EQUIPO</span><h2>Técnicos</h2></div><span className="result-count">{visibleTechnicians.length} resultados</span></div>
+          <div className="panel-heading"><div><span className="kicker">EQUIPO</span><h2>Técnicos</h2></div><div className="panel-meta"><span className="result-count">{visibleTechnicians.length} resultados</span>{searchFilterLabel && <span className="filter-chip">{searchFilterLabel}</span>}</div></div>
           <div className="table-list">
             {visibleTechnicians.map((technician) => <article className={`table-row selectable-row ${selectedTechnicianId === technician.id ? "selected-row" : ""}`} key={technician.id} role="button" tabIndex={0} aria-label={`Abrir ficha de ${technician.full_name}`} onClick={() => openTechnician(technician.id)} onKeyDown={(event) => activateRow(event, () => openTechnician(technician.id))}>
               <div className="brand-logo">{technician.full_name.slice(0, 2).toUpperCase()}</div><div><strong>{technician.full_name}</strong><span>{technician.email ?? technician.job_title ?? "Sin datos de contacto"}</span></div><span className={`status ${getEntityStatusPresentation(technician.status).className}`}>{getEntityStatusPresentation(technician.status).label}</span><span>{technician.area ?? "Sin área"}</span>{canManage ? <div className="row-actions"><button onClick={(event) => { event.stopPropagation(); editTechnician(technician); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); removeTechnician(technician); }}>Eliminar</button></div> : <button className="text-button" onClick={(event) => { event.stopPropagation(); openTechnician(technician.id); }}>Abrir ficha</button>}
             </article>)}
-            {visibleTechnicians.length === 0 && <p className="empty-state">No hay técnicos que coincidan con la búsqueda.</p>}
+            {visibleTechnicians.length === 0 && <div className="empty-state"><strong>No encontramos técnicos con esos criterios.</strong><p>{searchQuery ? "Limpia la búsqueda para volver a ver el equipo completo." : "Registra el primer técnico para asignarle certificaciones."}</p>{searchQuery && <button type="button" className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button>}</div>}
           </div>
         </section>}
 
@@ -929,20 +930,20 @@ export default function Home() {
         </section>}
 
         {activeSection === "certifications" && <section className="panel data-panel">
-          <div className="panel-heading"><div><span className="kicker">VIGENCIAS</span><h2>{showExpiringOnly ? "Próximos vencimientos" : showMissingEvidenceOnly ? "Evidencia pendiente" : "Certificaciones"}</h2></div>{(showExpiringOnly || showMissingEvidenceOnly || searchQuery) && <button className="text-button" onClick={() => { setShowExpiringOnly(false); setShowMissingEvidenceOnly(false); setSearchQuery(""); }}>Limpiar filtros</button>}</div>
+          <div className="panel-heading"><div><span className="kicker">VIGENCIAS</span><h2>{showExpiringOnly ? "Próximos vencimientos" : showMissingEvidenceOnly ? "Evidencia pendiente" : "Certificaciones"}</h2></div><div className="panel-meta">{showExpiringOnly && <span className="filter-chip">Vence en 90 días</span>}{showMissingEvidenceOnly && <span className="filter-chip">Sin evidencia</span>}{searchFilterLabel && <span className="filter-chip">{searchFilterLabel}</span>}{(showExpiringOnly || showMissingEvidenceOnly || searchQuery) && <button className="text-button" onClick={() => { setShowExpiringOnly(false); setShowMissingEvidenceOnly(false); setSearchQuery(""); }}>Limpiar filtros</button>}</div></div>
           <div className="table-list">
             {canManage && <>
               <div className="panel-heading"><span className="kicker">CATÁLOGO ADMINISTRABLE</span><strong>{visibleCatalog.length} certificaciones</strong></div>
               {visibleCatalog.map((certification) => <article className={`table-row catalog-row selectable-row ${selectedCertificationId === certification.id ? "selected-row" : ""}`} key={certification.id} role="button" tabIndex={0} aria-label={`Abrir detalle de ${certification.name}`} onClick={() => openCertification(certification.id)} onKeyDown={(event) => activateRow(event, () => openCertification(certification.id))}>
                 <div className="brand-logo"><Award size={18}/></div><div><strong>{certification.name}</strong><span>{brandNameById.get(certification.brand_id) ?? "Marca sin identificar"} · {certification.code ?? "Sin código"}</span></div><span className={`status ${getEntityStatusPresentation(certification.status, true).className}`}>{getEntityStatusPresentation(certification.status, true).label}</span><span>{certification.validity_months ? `${certification.validity_months} meses de vigencia` : certification.level ?? "Sin vigencia definida"}</span><div className="row-actions"><button onClick={(event) => { event.stopPropagation(); editCatalogCertification(certification); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); removeCatalogCertification(certification); }}>Eliminar</button></div>
               </article>)}
-              {visibleCatalog.length === 0 && <p className="empty-state">No hay certificaciones de catálogo que coincidan con la búsqueda.</p>}
+              {visibleCatalog.length === 0 && <div className="empty-state"><strong>No encontramos certificaciones de catálogo.</strong><p>{searchQuery ? "Prueba con otra búsqueda o limpia el filtro actual." : "Crea una certificación para asociarla a una marca."}</p>{searchQuery && <button type="button" className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button>}</div>}
               <div className="panel-heading"><span className="kicker">ASIGNACIONES</span><strong>{visibleRecords.length} certificaciones de técnicos</strong></div>
             </>}
             {visibleRecords.map((record) => <article className={`table-row selectable-row ${selectedCertificationId === record.certification_id ? "selected-row" : ""}`} key={record.id} role="button" tabIndex={0} aria-label={`Abrir detalle de ${certificationById.get(record.certification_id)?.name ?? "la certificación"}`} onClick={() => openCertification(record.certification_id)} onKeyDown={(event) => activateRow(event, () => openCertification(record.certification_id))}>
               <div className="brand-logo"><Award size={18}/></div><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>{certificationById.get(record.certification_id)?.name ?? record.certification_id}</span>{!record.evidence_path && <span className="missing-pdf" title="Sin PDF adjunto"><FileWarning size={13} aria-hidden="true" />Sin PDF</span>}</div><span className={`status ${getRecordPresentation(record).className}`}>{getRecordPresentation(record).label}</span><span>Vence: {formatDate(record.expires_at)}</span>{canManage ? <div className="row-actions"><button onClick={(event) => { event.stopPropagation(); editTechnicianCertification(record); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); deleteTechnicianCertification(record); }}>Eliminar</button></div> : <span />}
             </article>)}
-            {visibleRecords.length === 0 && <p className="empty-state">No hay certificaciones que coincidan con los filtros actuales.</p>}
+            {visibleRecords.length === 0 && <div className="empty-state"><strong>No hay certificaciones que coincidan con los filtros actuales.</strong><p>{showMissingEvidenceOnly ? "No hay certificados vigentes pendientes de PDF o enlace." : showExpiringOnly ? "No hay certificados que venzan en los próximos 90 días." : searchQuery ? "Prueba con otra búsqueda o limpia el filtro actual." : "Registra una certificación completada para verla aquí."}</p>{(showExpiringOnly || showMissingEvidenceOnly || searchQuery) && <button type="button" className="text-button" onClick={() => { setShowExpiringOnly(false); setShowMissingEvidenceOnly(false); setSearchQuery(""); }}>Limpiar filtros</button>}</div>}
           </div>
         </section>}
 
@@ -952,12 +953,12 @@ export default function Home() {
         </section>}
 
         {activeSection === "requirements" && <section className="panel data-panel">
-          <div className="panel-heading"><div><span className="kicker">COBERTURA</span><h2>Requisitos</h2></div>{searchQuery && <button className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button>}</div>
+          <div className="panel-heading"><div><span className="kicker">COBERTURA</span><h2>Requisitos</h2></div><div className="panel-meta"><span className="result-count">{visibleRequirements.length} resultados</span>{searchFilterLabel && <span className="filter-chip">{searchFilterLabel}</span>}{searchQuery && <button className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button>}</div></div>
           <div className="table-list">
             {visibleRequirements.map((requirement) => <article className={`table-row requirement-row selectable-row ${selectedRequirementId === requirement.id ? "selected-row" : ""}`} key={requirement.id} role="button" tabIndex={0} aria-label={`Abrir requisito ${certificationById.get(requirement.certification_id)?.name ?? "sin identificar"}`} onClick={() => openRequirement(requirement.id)} onKeyDown={(event) => activateRow(event, () => openRequirement(requirement.id))}>
               <div className="brand-logo"><FileCheck2 size={18}/></div><div><strong>{brandNameById.get(requirement.brand_id) ?? "Marca sin identificar"}</strong><span>{certificationById.get(requirement.certification_id)?.name ?? requirement.certification_id}</span></div><div className="coverage-cell"><span>Cobertura</span><strong>{getRequirementCoverage(requirement).achieved} de {getRequirementCoverage(requirement).required} cubiertos</strong></div><div className="coverage-cell"><span>{getRequirementCoverage(requirement).gap === 0 ? "Estado" : "Pendiente"}</span><strong>{getRequirementCoverage(requirement).gap === 0 ? "Requisito cubierto" : `${getRequirementCoverage(requirement).gap} cupos`}</strong></div>{canManage ? <div className="row-actions"><button onClick={(event) => { event.stopPropagation(); editFullRequirement(requirement); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); deleteRequirement(requirement); }}>Eliminar</button></div> : <span />}
             </article>)}
-            {visibleRequirements.length === 0 && <p className="empty-state">No hay requisitos que coincidan con la búsqueda.</p>}
+            {visibleRequirements.length === 0 && <div className="empty-state"><strong>No encontramos requisitos con esos criterios.</strong><p>{searchQuery ? "Limpia la búsqueda para volver a ver todos los requisitos." : "Agrega un requisito para empezar a medir la cobertura."}</p>{searchQuery && <button type="button" className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button>}</div>}
           </div>
         </section>}
       </section>
