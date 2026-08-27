@@ -129,6 +129,8 @@ h1 { margin: 0; font-size: clamp(30px, 3vw, 40px); line-height: 1; letter-spacin
 .alert.warning .alert-dot { background: #f3bd13; }
 .alert strong { display: block; font-size: 12px; }
 .alert p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.alert small { display: block; margin-top: 8px; color: var(--blue); font-size: 10px; font-weight: 700; }
+.alert-button:hover small { color: var(--navy); text-decoration: underline; }
 .alert svg { margin-top: 2px; color: #a2a9b8; }
 .full-button { width: calc(100% - 36px); margin: 16px 18px 18px; padding: 10px; border: 1px solid var(--navy); border-radius: 0; background: var(--white); color: var(--navy); font-size: 12px; font-weight: 700; cursor: pointer; transition: background .16s ease, color .16s ease; }
 .full-button:hover { background: var(--navy); color: var(--white); }
@@ -251,7 +253,7 @@ button.table-row { cursor: pointer; }
   .brand-mark { padding: 6px; font-size: 9px; }
   .content { padding: 32px; }
   .main-grid { grid-template-columns: 1fr; }
-  .alert-panel { display: none; }
+  .alert-panel { display: block; }
 }
 
 @media (max-width: 880px) {
