@@ -156,6 +156,7 @@ h1 { margin: 0; font-size: clamp(30px, 3vw, 40px); line-height: 1; letter-spacin
 .management-panel { display: grid; grid-template-columns: minmax(210px, .55fr) minmax(0, 1.45fr); gap: 24px; margin-bottom: 24px; padding: 24px; border: 1px solid #bfc7e7; border-left: 4px solid var(--blue); border-radius: 0; background: var(--white); box-shadow: none; }
 .management-panel h2 { margin: 0; font-size: 20px; letter-spacing: -.03em; }
 .management-panel p { max-width: 280px; margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.management-panel .form-guidance { margin-top: 12px; padding: 9px 10px; border-left: 3px solid var(--blue); background: var(--blue-soft); color: var(--navy); font-size: 11px; }
 .management-actions { display: grid; gap: 8px; }
 .management-actions details { padding: 12px 14px; border: 1px solid var(--line); border-radius: 0; background: var(--white); }
 .management-actions details[open] { border-color: #aeb8ff; }
