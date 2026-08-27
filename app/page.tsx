@@ -45,6 +45,7 @@ export default function Home() {
   const [activeSection, setActiveSection] = useState<Section>("summary");
   const [searchQuery, setSearchQuery] = useState("");
   const [showExpiringOnly, setShowExpiringOnly] = useState(false);
+  const [showMissingEvidenceOnly, setShowMissingEvidenceOnly] = useState(false);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [selectedTechnicianId, setSelectedTechnicianId] = useState<string | null>(null);
   const [selectedCertificationId, setSelectedCertificationId] = useState<string | null>(null);
@@ -687,6 +688,7 @@ export default function Home() {
     const days = (new Date(record.expires_at).getTime() - Date.now()) / 86400000;
     return days >= 0 && days <= 90;
   }).length;
+  const currentRecordsWithoutEvidence = records.filter((record) => isRecordCurrent(record) && !record.evidence_path && !record.verification_url).length;
   const openGaps = Math.max(totalRequired - totalCovered, 0);
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
   const brandNameById = useMemo(() => new Map(brands.map((brand) => [brand.id, brand.name])), [brands]);
@@ -715,6 +717,7 @@ export default function Home() {
     const certificationName = certificationById.get(record.certification_id)?.name ?? record.certification_id;
     const matchesSearch = `${technicianName} ${certificationName} ${record.status} ${record.certificate_number ?? ""} ${record.notes ?? ""}`.toLocaleLowerCase().includes(normalizedQuery);
     if (!matchesSearch) return false;
+    if (showMissingEvidenceOnly) return isRecordCurrent(record) && !record.evidence_path && !record.verification_url;
     if (!showExpiringOnly) return true;
     if (!record.expires_at) return false;
     const days = (new Date(record.expires_at).getTime() - Date.now()) / 86400000;
@@ -728,9 +731,10 @@ export default function Home() {
     requirements: "Requisitos",
   };
 
-  function showSection(section: Section, options?: { expiring?: boolean }) {
+  function showSection(section: Section, options?: { expiring?: boolean; missingEvidence?: boolean }) {
     setActiveSection(section);
     setShowExpiringOnly(options?.expiring ?? false);
+    setShowMissingEvidenceOnly(options?.missingEvidence ?? false);
     setSelectedBrandId(null);
     setSelectedTechnicianId(null);
     setSelectedCertificationId(null);
@@ -741,6 +745,7 @@ export default function Home() {
   function openBrand(brandId: string) {
     setActiveSection("brands");
     setShowExpiringOnly(false);
+    setShowMissingEvidenceOnly(false);
     setSearchQuery("");
     setSelectedTechnicianId(null);
     setSelectedCertificationId(null);
@@ -751,6 +756,7 @@ export default function Home() {
   function openTechnician(technicianId: string) {
     setActiveSection("technicians");
     setShowExpiringOnly(false);
+    setShowMissingEvidenceOnly(false);
     setSearchQuery("");
     setSelectedBrandId(null);
     setSelectedCertificationId(null);
@@ -875,11 +881,11 @@ export default function Home() {
           </div>
 
           <aside className="panel alert-panel">
-            <div className="panel-heading"><div><span className="kicker">ESTADO</span><h2>Resumen</h2></div><span className="badge">{openGaps}</span></div>
+            <div className="panel-heading"><div><span className="kicker">PRIORIDAD OPERATIVA</span><h2>Atención requerida</h2></div><span className="badge">{openGaps + expiringSoon + currentRecordsWithoutEvidence}</span></div>
             <div className="alert-list">
-              <button className={`alert alert-button ${openGaps > 0 ? "critical" : "neutral"}`} onClick={() => showSection("requirements")}><span className="alert-dot"/><div><strong>Brechas de certificación</strong><p>{openGaps > 0 ? `${openGaps} cupos requeridos todavía no están cubiertos.` : "Todos los requisitos están cubiertos."}</p></div><ChevronRight size={17}/></button>
-              <button className={`alert alert-button ${expiringSoon > 0 ? "warning" : "neutral"}`} onClick={() => showSection("certifications", { expiring: true })}><span className="alert-dot"/><div><strong>Próximos vencimientos</strong><p>{expiringSoon} certificados vencen en los próximos 90 días.</p></div><ChevronRight size={17}/></button>
-              <div className="alert neutral"><span className="alert-dot"/><div><strong>Base conectada</strong><p>Los indicadores se actualizan automáticamente desde Supabase.</p></div></div>
+              <button className={`alert alert-button ${openGaps > 0 ? "critical" : "neutral"}`} onClick={() => showSection("requirements")}><span className="alert-dot"/><div><strong>Resolver brechas</strong><p>{openGaps > 0 ? `${openGaps} cupos requeridos todavía no están cubiertos.` : "No hay brechas abiertas."}</p><small>Ver requisitos y cobertura</small></div><ChevronRight size={17}/></button>
+              <button className={`alert alert-button ${expiringSoon > 0 ? "warning" : "neutral"}`} onClick={() => showSection("certifications", { expiring: true })}><span className="alert-dot"/><div><strong>Revisar vencimientos</strong><p>{expiringSoon > 0 ? `${expiringSoon} certificados vencen en los próximos 90 días.` : "No hay vencimientos próximos."}</p><small>Ver certificados por vencer</small></div><ChevronRight size={17}/></button>
+              <button className={`alert alert-button ${currentRecordsWithoutEvidence > 0 ? "warning" : "neutral"}`} onClick={() => showSection("certifications", { missingEvidence: true })}><span className="alert-dot"/><div><strong>Completar evidencia</strong><p>{currentRecordsWithoutEvidence > 0 ? `${currentRecordsWithoutEvidence} certificados vigentes no tienen PDF ni enlace.` : "Toda la evidencia vigente está registrada."}</p><small>Ver evidencia pendiente</small></div><ChevronRight size={17}/></button>
             </div>
           </aside>
         </section>}
@@ -923,7 +929,7 @@ export default function Home() {
         </section>}
 
         {activeSection === "certifications" && <section className="panel data-panel">
-          <div className="panel-heading"><div><span className="kicker">VIGENCIAS</span><h2>{showExpiringOnly ? "Próximos vencimientos" : "Certificaciones"}</h2></div>{(showExpiringOnly || searchQuery) && <button className="text-button" onClick={() => { setShowExpiringOnly(false); setSearchQuery(""); }}>Limpiar filtros</button>}</div>
+          <div className="panel-heading"><div><span className="kicker">VIGENCIAS</span><h2>{showExpiringOnly ? "Próximos vencimientos" : showMissingEvidenceOnly ? "Evidencia pendiente" : "Certificaciones"}</h2></div>{(showExpiringOnly || showMissingEvidenceOnly || searchQuery) && <button className="text-button" onClick={() => { setShowExpiringOnly(false); setShowMissingEvidenceOnly(false); setSearchQuery(""); }}>Limpiar filtros</button>}</div>
           <div className="table-list">
             {canManage && <>
               <div className="panel-heading"><span className="kicker">CATÁLOGO ADMINISTRABLE</span><strong>{visibleCatalog.length} certificaciones</strong></div>
