@@ -184,6 +184,13 @@ h1 { margin: 0; font-size: clamp(30px, 3vw, 40px); line-height: 1; letter-spacin
 .result-count { color: var(--muted); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; }
 .panel-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .filter-chip { max-width: 210px; overflow: hidden; padding: 5px 8px; border: 1px solid #cdd3fb; background: var(--blue-soft); color: var(--navy); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.brand-filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 24px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #fbfbfd; }
+.brand-filter-label { margin-right: 4px; color: var(--muted); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.brand-filter-tag { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 6px 10px; border: 1px solid #cdd3e1; border-radius: 999px; background: var(--white); color: var(--navy); font-size: 11px; font-weight: 700; cursor: pointer; transition: border-color .16s ease, background .16s ease, color .16s ease; }
+.brand-filter-tag:hover { border-color: var(--blue); background: var(--blue-soft); }
+.brand-filter-tag span { display: inline-grid; min-width: 18px; min-height: 18px; place-items: center; padding: 0 4px; border-radius: 999px; background: var(--blue-soft); color: var(--blue); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; }
+.brand-filter-tag.active { border-color: var(--navy); background: var(--navy); color: var(--white); }
+.brand-filter-tag.active span { background: rgba(255, 255, 255, .16); color: var(--white); }
 .table-row { display: grid; grid-template-columns: 44px minmax(180px, 1fr) minmax(100px, 160px) minmax(130px, 190px) minmax(110px, max-content); gap: 16px; align-items: center; width: 100%; min-height: 78px; padding: 13px 24px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); font-size: 12px; text-align: left; }
 button.table-row { cursor: pointer; }
 .table-row[role="button"] { cursor: pointer; transition: background .16s ease, box-shadow .16s ease; }
@@ -356,4 +363,6 @@ nav button, .logout-button { border-radius: 8px; }
   .panel-heading { align-items: flex-start; flex-direction: column; padding: 18px 16px; }
   .panel-meta { justify-content: flex-start; }
   .filter-chip { max-width: min(100%, 250px); }
+  .brand-filter-bar { padding: 12px 16px; }
+  .brand-filter-label { flex-basis: 100%; }
 }

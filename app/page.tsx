@@ -48,6 +48,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showExpiringOnly, setShowExpiringOnly] = useState(false);
   const [showMissingEvidenceOnly, setShowMissingEvidenceOnly] = useState(false);
+  const [selectedRequirementBrandId, setSelectedRequirementBrandId] = useState<string | null>(null);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [selectedTechnicianId, setSelectedTechnicianId] = useState<string | null>(null);
   const [selectedCertificationId, setSelectedCertificationId] = useState<string | null>(null);
@@ -64,6 +65,7 @@ export default function Home() {
     function handleEscape(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       if (searchQuery) setSearchQuery("");
+      else if (selectedRequirementBrandId) setSelectedRequirementBrandId(null);
       else if (editingCertificationRecord) setEditingCertificationRecord(null);
       else if (editingRequirement) setEditingRequirement(null);
       else if (editingCatalogCertification) setEditingCatalogCertification(null);
@@ -76,7 +78,7 @@ export default function Home() {
     }
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [editingBrand, editingCatalogCertification, editingCertificationRecord, editingRequirement, editingTechnician, searchQuery, selectedBrandId, selectedCertificationId, selectedRequirementId, selectedTechnicianId]);
+  }, [editingBrand, editingCatalogCertification, editingCertificationRecord, editingRequirement, editingTechnician, searchQuery, selectedBrandId, selectedCertificationId, selectedRequirementBrandId, selectedRequirementId, selectedTechnicianId]);
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -741,7 +743,13 @@ export default function Home() {
   const selectedCertificationRequirement = selectedCertification ? requirements.find((requirement) => requirement.certification_id === selectedCertification.id) ?? null : null;
   const visibleBrandSummaries = brandSummaries.filter((brand) => `${brand.name} ${brand.internal_owner ?? ""}`.toLocaleLowerCase().includes(normalizedQuery));
   const visibleTechnicians = technicians.filter((technician) => `${technician.full_name} ${technician.email ?? ""} ${technician.job_title ?? ""} ${technician.area ?? ""} ${technician.manager_name ?? ""}`.toLocaleLowerCase().includes(normalizedQuery));
+  const requirementBrandCounts = requirements.reduce((counts, requirement) => {
+    counts.set(requirement.brand_id, (counts.get(requirement.brand_id) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+  const requirementBrands = brands.filter((brand) => requirementBrandCounts.has(brand.id));
   const visibleRequirements = requirements.filter((requirement) => {
+    if (selectedRequirementBrandId && requirement.brand_id !== selectedRequirementBrandId) return false;
     const brandName = brandNameById.get(requirement.brand_id) ?? requirement.brand_id;
     const certification = certificationById.get(requirement.certification_id);
     return `${brandName} ${certification?.name ?? ""} ${certification?.code ?? ""} ${requirement.notes ?? ""}`.toLocaleLowerCase().includes(normalizedQuery);
@@ -774,11 +782,17 @@ export default function Home() {
     setActiveSection(section);
     setShowExpiringOnly(options?.expiring ?? false);
     setShowMissingEvidenceOnly(options?.missingEvidence ?? false);
+    setSelectedRequirementBrandId(null);
     setSelectedBrandId(null);
     setSelectedTechnicianId(null);
     setSelectedCertificationId(null);
     setSelectedRequirementId(null);
     setSearchQuery("");
+  }
+
+  function clearRequirementFilters() {
+    setSearchQuery("");
+    setSelectedRequirementBrandId(null);
   }
 
   function openBrand(brandId: string) {
@@ -989,12 +1003,17 @@ export default function Home() {
         </section>}
 
         {activeSection === "requirements" && <section className="panel data-panel">
-          <div className="panel-heading"><div><span className="kicker">COBERTURA</span><h2>Requisitos</h2></div><div className="panel-meta"><span className="result-count">{visibleRequirements.length} resultados</span>{searchFilterLabel && <span className="filter-chip">{searchFilterLabel}</span>}{searchQuery && <button className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button>}</div></div>
+          <div className="panel-heading"><div><span className="kicker">COBERTURA</span><h2>Requisitos</h2></div><div className="panel-meta"><span className="result-count">{visibleRequirements.length} resultados</span>{searchFilterLabel && <span className="filter-chip">{searchFilterLabel}</span>}{(searchQuery || selectedRequirementBrandId) && <button className="text-button" onClick={clearRequirementFilters}>Limpiar filtros</button>}</div></div>
+          <div className="brand-filter-bar" aria-label="Filtrar requisitos por marca">
+            <span className="brand-filter-label">Filtrar por marca</span>
+            <button type="button" className={`brand-filter-tag ${selectedRequirementBrandId === null ? "active" : ""}`} aria-pressed={selectedRequirementBrandId === null} onClick={() => setSelectedRequirementBrandId(null)}>Todas <span>{requirements.length}</span></button>
+            {requirementBrands.map((brand) => <button type="button" key={brand.id} className={`brand-filter-tag ${selectedRequirementBrandId === brand.id ? "active" : ""}`} aria-pressed={selectedRequirementBrandId === brand.id} onClick={() => setSelectedRequirementBrandId((current) => current === brand.id ? null : brand.id)}>{brand.name} <span>{requirementBrandCounts.get(brand.id)}</span></button>)}
+          </div>
           <div className="table-list">
             {visibleRequirements.map((requirement) => <article className={`table-row requirement-row selectable-row ${selectedRequirementId === requirement.id ? "selected-row" : ""}`} key={requirement.id} role="button" tabIndex={0} aria-label={`Abrir requisito ${certificationById.get(requirement.certification_id)?.name ?? "sin identificar"}`} onClick={() => openRequirement(requirement.id)} onKeyDown={(event) => activateRow(event, () => openRequirement(requirement.id))}>
               <div className="brand-logo"><FileCheck2 size={18}/></div><div><strong>{brandNameById.get(requirement.brand_id) ?? "Marca sin identificar"}</strong><span>{certificationById.get(requirement.certification_id)?.name ?? requirement.certification_id}</span></div><div className="coverage-cell"><span>Cobertura</span><strong>{getRequirementCoverage(requirement).achieved} de {getRequirementCoverage(requirement).required} cubiertos</strong></div><div className="coverage-cell"><span>{getRequirementCoverage(requirement).gap === 0 ? "Estado" : "Pendiente"}</span><strong>{getRequirementCoverage(requirement).gap === 0 ? "Requisito cubierto" : `${getRequirementCoverage(requirement).gap} cupos`}</strong></div>{canManage ? <div className="row-actions"><button onClick={(event) => { event.stopPropagation(); editFullRequirement(requirement); }}>Editar</button><button onClick={(event) => { event.stopPropagation(); deleteRequirement(requirement); }}>Eliminar</button></div> : <span />}
             </article>)}
-            {visibleRequirements.length === 0 && <div className="empty-state"><strong>No encontramos requisitos con esos criterios.</strong><p>{searchQuery ? "Limpia la búsqueda para volver a ver todos los requisitos." : "Agrega un requisito para empezar a medir la cobertura."}</p>{searchQuery && <button type="button" className="text-button" onClick={() => setSearchQuery("")}>Limpiar búsqueda</button>}</div>}
+            {visibleRequirements.length === 0 && <div className="empty-state"><strong>No encontramos requisitos con esos criterios.</strong><p>{searchQuery || selectedRequirementBrandId ? "Limpia los filtros para volver a ver todos los requisitos." : "Agrega un requisito para empezar a medir la cobertura."}</p>{(searchQuery || selectedRequirementBrandId) && <button type="button" className="text-button" onClick={clearRequirementFilters}>Limpiar filtros</button>}</div>}
           </div>
         </section>}
       </section>
