@@ -15,6 +15,8 @@
 
 * { box-sizing: border-box; }
 
+html { scrollbar-gutter: stable; }
+
 body {
   margin: 0;
   min-width: 320px;
@@ -253,6 +255,26 @@ button.table-row { cursor: pointer; }
 .empty-state { display: grid; justify-items: start; gap: 7px; margin: 0; padding: 28px 22px; color: var(--muted); font-size: 13px; }
 .empty-state strong { color: var(--ink); font-size: 14px; }
 .empty-state p { max-width: 440px; margin: 0; line-height: 1.5; }
+
+/* UX audit: soften hierarchy, make overlays feel intentional, and preserve keyboard cues. */
+.panel, .management-panel, .stat-card, .stats-grid article, .hero-card, .search, .icon-button, .table-row, .brand-logo, .modal-form-section details { border-radius: 10px; }
+.panel, .management-panel, .stat-card, .stats-grid article { box-shadow: 0 8px 24px rgba(1, 9, 92, .045); }
+.hero-card { border-radius: 14px; box-shadow: 0 14px 34px rgba(1, 9, 92, .16); }
+.search { box-shadow: 0 2px 10px rgba(1, 9, 92, .04); }
+.icon-button { border-radius: 10px; }
+.table-row { border-radius: 0; }
+.entity-modal { border-radius: 14px; animation: modal-in .18s ease-out both; }
+.modal-heading { position: sticky; top: 0; z-index: 2; background: var(--white); }
+.modal-close, .primary-action, .edit-form > button { border-radius: 8px; }
+.brand-requirements > button, .certificate-assignments > div { border-radius: 8px; }
+.management-actions details { border-radius: 10px; }
+.inline-form input, .inline-form select, .inline-form textarea, .edit-form input, .edit-form select, .edit-form textarea { border-radius: 7px; }
+nav button, .logout-button { border-radius: 8px; }
+@keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
 
 @media (max-width: 1050px) {
   .shell { grid-template-columns: 82px minmax(0, 1fr); }
