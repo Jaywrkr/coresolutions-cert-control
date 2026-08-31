@@ -58,6 +58,7 @@ export default function Home() {
   const [editingCatalogCertification, setEditingCatalogCertification] = useState<Certification | null>(null);
   const [editingRequirement, setEditingRequirement] = useState<Requirement | null>(null);
   const [editingCertificationRecord, setEditingCertificationRecord] = useState<CertificationRecord | null>(null);
+  const modalOpen = Boolean(selectedBrandId || selectedTechnicianId || selectedCertificationId || selectedRequirementId || editingBrand || editingTechnician || editingCatalogCertification || editingRequirement || editingCertificationRecord);
 
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
@@ -76,6 +77,15 @@ export default function Home() {
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
   }, [editingBrand, editingCatalogCertification, editingCertificationRecord, editingRequirement, editingTechnician, searchQuery, selectedBrandId, selectedCertificationId, selectedRequirementId, selectedTechnicianId]);
+
+  useEffect(() => {
+    if (!modalOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [modalOpen]);
 
   useEffect(() => {
     let supabase;
@@ -860,11 +870,11 @@ export default function Home() {
       <aside className="sidebar">
         <div className="brand-block"><div className="brand-mark">CORE</div><span>CoreCert</span></div>
         <nav>
-          <button className={activeSection === "summary" ? "active" : ""} onClick={() => showSection("summary")}><ShieldCheck size={19}/>Resumen</button>
-          <button className={activeSection === "brands" ? "active" : ""} onClick={() => showSection("brands")}><Building2 size={19}/>Marcas</button>
-          <button className={activeSection === "technicians" ? "active" : ""} onClick={() => showSection("technicians")}><Users size={19}/>Técnicos</button>
-          <button className={activeSection === "certifications" ? "active" : ""} onClick={() => showSection("certifications")}><Award size={19}/>Certificaciones</button>
-          <button className={activeSection === "requirements" ? "active" : ""} onClick={() => showSection("requirements")}><FileCheck2 size={19}/>Requisitos</button>
+          <button type="button" className={activeSection === "summary" ? "active" : ""} aria-current={activeSection === "summary" ? "page" : undefined} title="Resumen" onClick={() => showSection("summary")}><ShieldCheck size={19}/>Resumen</button>
+          <button type="button" className={activeSection === "brands" ? "active" : ""} aria-current={activeSection === "brands" ? "page" : undefined} title="Marcas" onClick={() => showSection("brands")}><Building2 size={19}/>Marcas</button>
+          <button type="button" className={activeSection === "technicians" ? "active" : ""} aria-current={activeSection === "technicians" ? "page" : undefined} title="Técnicos" onClick={() => showSection("technicians")}><Users size={19}/>Técnicos</button>
+          <button type="button" className={activeSection === "certifications" ? "active" : ""} aria-current={activeSection === "certifications" ? "page" : undefined} title="Certificaciones" onClick={() => showSection("certifications")}><Award size={19}/>Certificaciones</button>
+          <button type="button" className={activeSection === "requirements" ? "active" : ""} aria-current={activeSection === "requirements" ? "page" : undefined} title="Requisitos" onClick={() => showSection("requirements")}><FileCheck2 size={19}/>Requisitos</button>
         </nav>
         <button className="logout-button" onClick={handleSignOut}><LogOut size={17}/>Cerrar sesión</button>
         <div className="sidebar-footer">Coresolutions · Uso interno</div>
@@ -877,18 +887,18 @@ export default function Home() {
             <div className="search"><Search size={18}/><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={`Buscar en ${sectionTitles[activeSection].toLocaleLowerCase()}`} aria-label={`Buscar en ${sectionTitles[activeSection]}`} />{searchQuery && <button type="button" className="clear-search" onClick={() => setSearchQuery("")} aria-label="Limpiar búsqueda">Limpiar</button>}</div>
             <div className="data-freshness" role="status" aria-live="polite"><span className={refreshing ? "sync-indicator syncing" : "sync-indicator"}/>{refreshing ? "Actualizando…" : formatSyncTime(lastSyncedAt)}</div>
             <button type="button" className="icon-button" aria-label="Actualizar datos" title="Actualizar datos" disabled={refreshing} onClick={() => void loadDashboard()}><RefreshCw size={18} className={refreshing ? "spin" : ""}/></button>
-            <button className="icon-button" aria-label="Ver alertas" onClick={() => showSection("requirements")}><Bell size={19}/>{openGaps > 0 && <i />}</button>
+            <button type="button" className="icon-button" aria-label="Ver alertas" title="Ver alertas" onClick={() => showSection("requirements")}><Bell size={19}/>{openGaps > 0 && <i />}</button>
             <div className="profile-chip"><span>{canManage ? "Administrador" : "Usuario"}</span><div className="avatar">{session.user.email?.slice(0, 2).toUpperCase()}</div></div>
           </div>
         </header>
 
-        {message && <div className="data-message" role="status" aria-live="polite"><span>{message}</span><button type="button" onClick={() => setMessage("")}>Cerrar</button></div>}
+        {message && <div className="data-message" role="status" aria-live="assertive"><span>{message}</span><button type="button" onClick={() => setMessage("")}>Cerrar</button></div>}
 
         {activeSection === "summary" && <>
         <section className="hero-card">
           <div><span className="hero-label">CUMPLIMIENTO GENERAL</span><strong>{generalCompliance}%</strong><p>{totalCovered} de {totalRequired} cupos requeridos están cubiertos.</p></div>
           <div className="hero-progress"><span style={{ width: `${generalCompliance}%` }} /></div>
-          <button onClick={() => showSection("requirements")}>Ver brechas <ChevronRight size={17}/></button>
+          <button type="button" onClick={() => showSection("requirements")}>Ver brechas <ChevronRight size={17}/></button>
         </section>
 
         <section className="stats-grid">
