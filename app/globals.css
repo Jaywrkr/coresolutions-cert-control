@@ -235,6 +235,12 @@ button.table-row { cursor: pointer; }
 .brand-requirements > button:hover { background: #e9ecff; }
 .brand-requirements strong { font-size: 13px; }
 .brand-requirements span { color: var(--muted); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; white-space: nowrap; }
+.requirement-groups { display: grid; gap: 22px; margin-top: 18px; }
+.requirement-group-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--ink); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.requirement-group-heading span { display: inline-grid; min-width: 24px; min-height: 24px; place-items: center; border-radius: 999px; background: var(--blue-soft); color: var(--navy); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; }
+.requirement-group:first-child .requirement-group-heading { color: var(--danger); }
+.requirement-group:first-child .requirement-group-heading span { background: #fff0f1; color: var(--danger); }
+.requirement-group .brand-requirements { margin-top: 9px; }
 .certificate-modal-backdrop { z-index: 60; }
 .certificate-assignments { display: grid; gap: 8px; margin-top: 16px; }
 .certificate-assignments > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 15px; border: 1px solid var(--line); background: #fbfbfd; }
