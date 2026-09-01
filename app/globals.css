@@ -260,6 +260,10 @@ button.table-row { cursor: pointer; }
 .modal-form-section details[open] { border-color: #aeb8ff; }
 .modal-form-section summary { color: var(--navy); font-size: 13px; font-weight: 700; cursor: pointer; }
 .form-helper { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.assignment-delete-list { display: grid; gap: 8px; margin-top: 14px; }
+.assignment-delete-list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fffafa; font-size: 12px; }
+.danger-action { border: 0; border-bottom: 1px solid currentColor; background: none; color: var(--danger); cursor: pointer; font-size: 12px; font-weight: 700; }
+.danger-action:hover { color: #a50f16; }
 .empty-state { display: grid; justify-items: start; gap: 7px; margin: 0; padding: 28px 22px; color: var(--muted); font-size: 13px; }
 .empty-state strong { color: var(--ink); font-size: 14px; }
 .empty-state p { max-width: 440px; margin: 0; line-height: 1.5; }
