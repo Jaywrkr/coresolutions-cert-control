@@ -259,6 +259,7 @@ button.table-row { cursor: pointer; }
 .modal-form-section details { padding: 14px 16px; border: 1px solid var(--line); background: #fbfbfd; }
 .modal-form-section details[open] { border-color: #aeb8ff; }
 .modal-form-section summary { color: var(--navy); font-size: 13px; font-weight: 700; cursor: pointer; }
+.form-helper { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .empty-state { display: grid; justify-items: start; gap: 7px; margin: 0; padding: 28px 22px; color: var(--muted); font-size: 13px; }
 .empty-state strong { color: var(--ink); font-size: 14px; }
 .empty-state p { max-width: 440px; margin: 0; line-height: 1.5; }
