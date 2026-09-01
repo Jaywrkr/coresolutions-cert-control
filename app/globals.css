@@ -309,6 +309,14 @@ nav button, .logout-button { border-radius: 8px; }
   .requirement-people > div { align-items: flex-start; flex-direction: column; }
 }
 
+/* Consistent right-side drawer for every detail and edit modal. */
+.modal-backdrop { place-items: stretch end; padding: 0; }
+.entity-modal, .edit-modal, .record-detail-modal { width: 560px; max-width: 100%; height: 100vh; max-height: 100vh; border-radius: 14px 0 0 14px; animation: drawer-in .22s ease-out both; }
+@keyframes drawer-in { from { opacity: 0; transform: translateX(32px); } to { opacity: 1; transform: translateX(0); } }
+@media (max-width: 560px) {
+  .entity-modal, .edit-modal, .record-detail-modal { width: 100%; border-radius: 12px 0 0 12px; }
+}
+
 @media (max-width: 1050px) {
   .shell { grid-template-columns: 82px minmax(0, 1fr); }
   .sidebar { padding: 24px 12px; }
