@@ -53,6 +53,7 @@ export default function Home() {
   const [selectedTechnicianId, setSelectedTechnicianId] = useState<string | null>(null);
   const [selectedCertificationId, setSelectedCertificationId] = useState<string | null>(null);
   const [selectedRequirementId, setSelectedRequirementId] = useState<string | null>(null);
+  const [requirementReturnBrandId, setRequirementReturnBrandId] = useState<string | null>(null);
   const [draggedBrandId, setDraggedBrandId] = useState<string | null>(null);
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
   const [editingTechnician, setEditingTechnician] = useState<Technician | null>(null);
@@ -72,9 +73,9 @@ export default function Home() {
       else if (editingTechnician) setEditingTechnician(null);
       else if (editingBrand) setEditingBrand(null);
       else if (selectedCertificationId) setSelectedCertificationId(null);
+      else if (selectedRequirementId) setSelectedRequirementId(null);
       else if (selectedBrandId) setSelectedBrandId(null);
       else if (selectedTechnicianId) setSelectedTechnicianId(null);
-      else if (selectedRequirementId) setSelectedRequirementId(null);
     }
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
@@ -824,11 +825,12 @@ export default function Home() {
   }
 
   function openRequirement(requirementId: string) {
+    setRequirementReturnBrandId(selectedBrandId);
     setActiveSection("summary");
     setShowExpiringOnly(false);
     setShowMissingEvidenceOnly(false);
     setSearchQuery("");
-    setSelectedBrandId(null);
+    if (!selectedBrandId) setSelectedBrandId(null);
     setSelectedTechnicianId(null);
     setSelectedCertificationId(null);
     setSelectedRequirementId(requirementId);
@@ -837,6 +839,19 @@ export default function Home() {
   function closeBrand() {
     setSelectedCertificationId(null);
     setSelectedBrandId(null);
+  }
+
+  function closeAllModals() {
+    setSelectedBrandId(null);
+    setSelectedTechnicianId(null);
+    setSelectedCertificationId(null);
+    setSelectedRequirementId(null);
+    setRequirementReturnBrandId(null);
+  }
+
+  function backFromRequirement() {
+    setSelectedRequirementId(null);
+    setRequirementReturnBrandId(null);
   }
 
   function activateRow(event: ReactKeyboardEvent<HTMLElement>, action: () => void) {
@@ -1034,9 +1049,9 @@ export default function Home() {
         </section>
       </div>}
 
-      {selectedRequirement && <div className="modal-backdrop record-detail-backdrop" role="presentation" onMouseDown={() => setSelectedRequirementId(null)}>
+      {selectedRequirement && <div className="modal-backdrop record-detail-backdrop" role="presentation" onMouseDown={closeAllModals}>
         <section className="entity-modal record-detail-modal" role="dialog" aria-modal="true" aria-labelledby="requirement-modal-title" onMouseDown={(event) => event.stopPropagation()}>
-          <div className="modal-heading"><div><span className="kicker">REQUISITO</span><h2 id="requirement-modal-title">{certificationById.get(selectedRequirement.certification_id)?.name ?? "Certificación sin identificar"}</h2><p>{brandNameById.get(selectedRequirement.brand_id) ?? "Marca sin identificar"}</p></div><button type="button" className="modal-close" autoFocus onClick={() => setSelectedRequirementId(null)}>Cerrar</button></div>
+          <div className="modal-heading"><div><span className="kicker">REQUISITO</span><h2 id="requirement-modal-title">{certificationById.get(selectedRequirement.certification_id)?.name ?? "Certificación sin identificar"}</h2><p>{brandNameById.get(selectedRequirement.brand_id) ?? "Marca sin identificar"}</p></div><button type="button" className="modal-close" autoFocus onClick={backFromRequirement}>{requirementReturnBrandId ? `Volver a ${brandNameById.get(requirementReturnBrandId) ?? "la marca"}` : "Cerrar"}</button></div>
           <div className="detail-grid modal-summary"><div><span>Cobertura</span><strong>{getRequirementCoverage(selectedRequirement).achieved} de {getRequirementCoverage(selectedRequirement).required} cupos cubiertos</strong></div><div><span>Brecha pendiente</span><strong>{getRequirementCoverage(selectedRequirement).gap === 0 ? "Requisito cubierto" : `${getRequirementCoverage(selectedRequirement).gap} cupos pendientes`}</strong></div><div><span>Obligatorio</span><strong>{selectedRequirement.mandatory ? "Sí" : "No"}</strong></div><div><span>Criterio de conteo</span><strong>{selectedRequirement.distinct_people_required ? "Técnicos distintos" : "Certificaciones vigentes"}</strong></div><div><span>Vigencia</span><strong>{formatDate(selectedRequirement.effective_from)} - {formatDate(selectedRequirement.effective_until)}</strong></div><div><span>Observaciones</span><strong>{selectedRequirement.notes ?? "Sin observaciones"}</strong></div></div>
           <div className="modal-section"><div><span className="kicker">PERSONAS ASIGNADAS</span><h3>Técnicos que cubren este requisito</h3></div>{records.filter((record) => record.certification_id === selectedRequirement.certification_id && isRecordCurrent(record)).length > 0 ? <div className="requirement-people">{records.filter((record) => record.certification_id === selectedRequirement.certification_id && isRecordCurrent(record)).map((record) => <div key={record.id}><div><strong>{technicianNameById.get(record.technician_id) ?? "Técnico sin identificar"}</strong><span>Emitida: {formatDate(record.issued_at)} · Vence: {formatDate(record.expires_at)}</span>{record.notes && <span>{record.notes}</span>}</div><div className="assignment-actions"><span className={`status ${getRecordPresentation(record).className}`}>{getRecordPresentation(record).label}</span>{!record.evidence_path && <span className="missing-pdf" title="Sin PDF adjunto"><FileWarning size={14} aria-hidden="true"/>Sin PDF</span>}{canManage && <button type="button" className="text-button" onClick={() => editTechnicianCertification(record)}>Editar</button>}</div></div>)}</div> : <p className="modal-empty">Todavía no hay técnicos con una certificación vigente para este requisito.</p>}</div>
           {canManage && <div className="modal-section modal-actions"><button type="button" className="primary-action" onClick={() => { setSelectedRequirementId(null); editFullRequirement(selectedRequirement); }}>Editar requisito</button></div>}
