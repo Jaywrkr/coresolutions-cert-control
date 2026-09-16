@@ -194,9 +194,21 @@ export default function Home() {
       return;
     }
 
-    if (result.error) setMessage(result.error.message);
+    if (result.error) setMessage(formatAuthError(result.error));
     else if (mode === "signup" && !result.data.session) setMessage("Cuenta creada. Revisa tu correo para confirmarla.");
     setAuthLoading(false);
+  }
+
+  function formatAuthError(error: { message?: string }) {
+    const rawMessage = error.message ?? "";
+    const normalized = rawMessage.toLocaleLowerCase();
+    if (normalized.includes("failed to fetch") || normalized.includes("networkerror") || normalized.includes("fetch failed")) {
+      return "No se pudo conectar con Supabase. Verifica NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY en Vercel y vuelve a desplegar.";
+    }
+    if (normalized.includes("redirect") && normalized.includes("url")) {
+      return "Supabase rechazó la URL de retorno. Agrega el dominio de Vercel en Authentication › URL Configuration › Redirect URLs.";
+    }
+    return rawMessage || "No se pudo completar la operación de autenticación.";
   }
 
   async function handlePasswordReset(event: FormEvent<HTMLFormElement>) {
@@ -206,9 +218,9 @@ export default function Home() {
     const email = String(new FormData(event.currentTarget).get("email") ?? "").trim();
     try {
       const result = await getSupabaseClient().auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
-      setMessage(result.error ? result.error.message : "Si el correo existe, recibirás un enlace para restablecer la contraseña.");
+      setMessage(result.error ? formatAuthError(result.error) : "Si el correo existe, recibirás un enlace para restablecer la contraseña.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "No se pudo solicitar el restablecimiento.");
+      setMessage(error instanceof Error ? formatAuthError(error) : "No se pudo solicitar el restablecimiento.");
     } finally {
       setAuthLoading(false);
     }
@@ -224,10 +236,10 @@ export default function Home() {
     if (password !== confirmation) { setMessage("Las contraseñas no coinciden."); setAuthLoading(false); return; }
     try {
       const result = await getSupabaseClient().auth.updateUser({ password });
-      if (result.error) setMessage(result.error.message);
+      if (result.error) setMessage(formatAuthError(result.error));
       else { setPasswordRecovery(false); setMessage("Contraseña actualizada. Ya puedes continuar en CoreCert."); }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "No se pudo actualizar la contraseña.");
+      setMessage(error instanceof Error ? formatAuthError(error) : "No se pudo actualizar la contraseña.");
     } finally {
       setAuthLoading(false);
     }
