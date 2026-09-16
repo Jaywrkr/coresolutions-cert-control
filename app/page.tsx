@@ -38,6 +38,8 @@ export default function Home() {
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [mode, setMode] = useState<"login" | "signup">("login");
+  const [resetMode, setResetMode] = useState(false);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [message, setMessage] = useState("");
   const [brands, setBrands] = useState<Brand[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
@@ -106,8 +108,9 @@ export default function Home() {
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
+      if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
     });
 
     return () => listener.subscription.unsubscribe();
@@ -194,6 +197,40 @@ export default function Home() {
     if (result.error) setMessage(result.error.message);
     else if (mode === "signup" && !result.data.session) setMessage("Cuenta creada. Revisa tu correo para confirmarla.");
     setAuthLoading(false);
+  }
+
+  async function handlePasswordReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthLoading(true);
+    setMessage("");
+    const email = String(new FormData(event.currentTarget).get("email") ?? "").trim();
+    try {
+      const result = await getSupabaseClient().auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+      setMessage(result.error ? result.error.message : "Si el correo existe, recibirás un enlace para restablecer la contraseña.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo solicitar el restablecimiento.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handlePasswordUpdate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthLoading(true);
+    setMessage("");
+    const form = new FormData(event.currentTarget);
+    const password = String(form.get("password") ?? "");
+    const confirmation = String(form.get("confirmation") ?? "");
+    if (password !== confirmation) { setMessage("Las contraseñas no coinciden."); setAuthLoading(false); return; }
+    try {
+      const result = await getSupabaseClient().auth.updateUser({ password });
+      if (result.error) setMessage(result.error.message);
+      else { setPasswordRecovery(false); setMessage("Contraseña actualizada. Ya puedes continuar en CoreCert."); }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo actualizar la contraseña.");
+    } finally {
+      setAuthLoading(false);
+    }
   }
 
   async function handleSignOut() {
@@ -885,23 +922,26 @@ export default function Home() {
     return <div className="loading-screen">Cargando CoreCert…</div>;
   }
 
+  if (passwordRecovery && session) {
+    return <main className="auth-shell"><section className="auth-card"><div className="brand-block auth-brand"><div className="brand-mark">CORE</div><span>CoreCert</span></div><p className="eyebrow">SEGURIDAD DE CUENTA</p><h1>Define una nueva contraseña</h1><p className="auth-copy">El enlace de recuperación es válido. Elige una contraseña nueva para volver a entrar.</p><form onSubmit={handlePasswordUpdate} className="auth-form"><label>Nueva contraseña<input name="password" type="password" minLength={6} required autoComplete="new-password" /></label><label>Repite la contraseña<input name="confirmation" type="password" minLength={6} required autoComplete="new-password" /></label><button disabled={authLoading}>{authLoading ? "Guardando…" : "Actualizar contraseña"}</button></form>{message && <p className="auth-message" role="status" aria-live="polite">{message}</p>}</section></main>;
+  }
+
   if (!session) {
     return (
       <main className="auth-shell">
         <section className="auth-card">
           <div className="brand-block auth-brand"><div className="brand-mark">CORE</div><span>CoreCert</span></div>
           <p className="eyebrow">CONTROL DE CERTIFICACIONES</p>
-          <h1>{mode === "login" ? "Iniciar sesión" : "Crear cuenta"}</h1>
+          <h1>{resetMode ? "Recuperar contraseña" : mode === "login" ? "Iniciar sesión" : "Crear cuenta"}</h1>
           <p className="auth-copy">Acceso interno para administrar requisitos de canal, técnicos y vigencias.</p>
-          <form onSubmit={handleAuth} className="auth-form">
+          {resetMode ? <form onSubmit={handlePasswordReset} className="auth-form"><label>Correo<input name="email" type="email" required autoComplete="email" /></label><button disabled={authLoading}>{authLoading ? "Enviando…" : "Enviar enlace de recuperación"}</button></form> : <form onSubmit={handleAuth} className="auth-form">
             <label>Correo<input name="email" type="email" required autoComplete="email" /></label>
             <label>Contraseña<input name="password" type="password" minLength={6} required autoComplete={mode === "login" ? "current-password" : "new-password"} /></label>
             <button disabled={authLoading}>{authLoading ? "Procesando…" : mode === "login" ? "Entrar" : "Crear cuenta"}</button>
-          </form>
+          </form>}
           {message && <p className="auth-message">{message}</p>}
-          <button className="auth-switch" onClick={() => { setMode(mode === "login" ? "signup" : "login"); setMessage(""); }}>
-            {mode === "login" ? "Crear una cuenta" : "Ya tengo una cuenta"}
-          </button>
+          {mode === "login" && !resetMode && <button className="auth-switch" onClick={() => { setResetMode(true); setMessage(""); }}>¿Olvidaste tu contraseña?</button>}
+          <button className="auth-switch" onClick={() => { if (resetMode) setResetMode(false); else setMode(mode === "login" ? "signup" : "login"); setMessage(""); }}>{resetMode ? "Volver a iniciar sesión" : mode === "login" ? "Crear una cuenta" : "Ya tengo una cuenta"}</button>
         </section>
       </main>
     );
