@@ -3,7 +3,7 @@
 import { DragEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Award, Bell, ChevronRight, FileCheck2, FileWarning, GripVertical, RefreshCw, Search, Users } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
-import { getSupabaseClient } from "../lib/supabase";
+import { getSupabaseClient, SOLO_LECTURA, URL_CORE } from "../lib/supabase";
 
 type Brand = { id: string; name: string; slug: string; status: string; internal_owner: string | null; notes: string | null; sort_order: number };
 type Technician = { id: string; full_name: string; email: string | null; job_title: string | null; area: string | null; status: string; start_date: string | null; manager_name: string | null; notes: string | null };
@@ -791,7 +791,8 @@ export default function Home() {
   const brandNameById = useMemo(() => new Map(brands.map((brand) => [brand.id, brand.name])), [brands]);
   const technicianNameById = useMemo(() => new Map(technicians.map((technician) => [technician.id, technician.full_name])), [technicians]);
   const certificationById = useMemo(() => new Map(certifications.map((certification) => [certification.id, certification])), [certifications]);
-  const canManage = role === "admin" || role === "brand_manager";
+  // Sólo lectura desde la migración a Core: nadie gestiona aquí.
+  const canManage = !SOLO_LECTURA && (role === "admin" || role === "brand_manager");
   const selectedBrand = brands.find((brand) => brand.id === selectedBrandId) ?? null;
   const selectedBrandSummary = brandSummaries.find((brand) => brand.id === selectedBrandId) ?? null;
   const selectedBrandRequirements = selectedBrand ? requirements.filter((requirement) => requirement.brand_id === selectedBrand.id) : [];
@@ -945,6 +946,7 @@ export default function Home() {
           <div className="brand-block auth-brand"><div className="brand-mark">CORE</div><span>CoreCert</span></div>
           <p className="eyebrow">CONTROL DE CERTIFICACIONES</p>
           <h1>{resetMode ? "Recuperar contraseña" : mode === "login" ? "Iniciar sesión" : "Crear cuenta"}</h1>
+          <div className="migration-notice" role="note"><strong>CoreCert se movió a Core Operaciones.</strong><span>Esta app queda sólo de lectura como respaldo. Las certificaciones, requisitos y PDFs se gestionan ahora en Core.</span><a href={URL_CORE}>Ir a Certificaciones en Core</a></div>
           <p className="auth-copy">Acceso interno para administrar requisitos de canal, técnicos y vigencias.</p>
           {resetMode ? <form onSubmit={handlePasswordReset} className="auth-form"><label>Correo<input name="email" type="email" required autoComplete="email" /></label><button disabled={authLoading}>{authLoading ? "Enviando…" : "Enviar enlace de recuperación"}</button></form> : <form onSubmit={handleAuth} className="auth-form">
             <label>Correo<input name="email" type="email" required autoComplete="email" /></label>
@@ -962,6 +964,7 @@ export default function Home() {
   return (
     <main className="shell">
       <section className="content">
+        <div className="migration-notice" role="note"><strong>CoreCert se movió a Core Operaciones.</strong><span>Esta app queda sólo de lectura como respaldo. Las certificaciones, requisitos y PDFs se gestionan ahora en Core.</span><a href={URL_CORE}>Ir a Certificaciones en Core</a></div>
         <header className="topbar">
           <div><p className="eyebrow">CONTROL DE CANAL</p><h1>{sectionTitles[activeSection]}</h1></div>
           <div className="top-actions">
