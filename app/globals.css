@@ -385,3 +385,9 @@ nav button, .logout-button { border-radius: 8px; }
   .brand-filter-bar { padding: 12px 16px; }
   .brand-filter-label { flex-basis: 100%; }
 }
+
+/* Aviso de migración a Core Operaciones (2026-09-24): la app queda sólo de lectura. */
+.migration-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-bottom: 18px; padding: 12px 14px; border: 1px solid var(--navy); background: var(--blue-soft); color: var(--navy); font-size: 13px; }
+.migration-notice strong { font-weight: 700; }
+.migration-notice span { flex: 1 1 260px; color: var(--ink); }
+.migration-notice a { color: var(--navy); font-weight: 700; text-decoration: underline; white-space: nowrap; }
